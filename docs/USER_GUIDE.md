@@ -115,3 +115,7 @@ The Supertext dialog and its messages follow your django CMS interface language 
 | *Timed out waiting for the Supertext translation.* / *The Supertext service is currently unavailable.* | Supertext took too long or is unavailable. Try again later. |
 
 Errors are shown per language: if one language fails, the others are still created.
+
+## Support
+
+Questions, problems or ideas: use the [Supertext support form](https://integrations.supertext.com/en/support?platform=django-cms). Mention the version of django CMS and of the plugin, what you did and what you expected; an error message helps a lot. You get an answer by email, in your language.
