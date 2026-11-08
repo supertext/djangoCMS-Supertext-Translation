@@ -2,6 +2,8 @@
 
 Translate django CMS pages into the site's other languages with **Supertext AI**, right from the toolbar.
 
+![Demo: an English page in django CMS, the toolbar's Language menu → Translate with Supertext…, Translate in the dialog for German, French and Italian, and the German version of the page](docs/images/demo.gif)
+
 In edit mode, choose **Language → Translate with Supertext…**, tick the languages and click **Translate**: the page's title, menu title, meta description and the texts of its plugins go to Supertext in one request per language and come back as a new language version of the page, with all plugins in place. Editors review and adjust it like any other page content.
 
 - Uses django CMS's own languages and page contents; works with djangocms-versioning (new languages are drafts)

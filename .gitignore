@@ -9,3 +9,5 @@ demo/static/
 demo/media/
 node_modules/
 .env
+/tests/docs/movie/out/
+/tests/docs/movie/voice/
