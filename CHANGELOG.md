@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## Unreleased
 
+## 1.0.0 — 2026-11-09
+
+First stable release. Every plugin release is now tested end to end against the live Supertext API (`.github/workflows/e2e.yml`).
+
 - Removed: support for django CMS 4.1 (end of life since April 2026); the minimum is now django CMS 5.0 LTS.
 - Removed: support for Django 4.2 (end of life since April 2026); the minimum is now Django 5.2 LTS (django CMS 5.0 runs on it).
 - Removed: support for Python 3.10 (end of life since October 2026); the minimum is now Python 3.11.
