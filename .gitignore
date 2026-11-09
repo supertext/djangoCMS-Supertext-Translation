@@ -11,3 +11,5 @@ node_modules/
 .env
 /tests/docs/movie/out/
 /tests/docs/movie/voice/
+/tests/e2e/node_modules/
+/tests/e2e/artifacts/

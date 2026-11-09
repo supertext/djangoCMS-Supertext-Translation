@@ -152,6 +152,29 @@ CI (`.github/workflows/ci.yml`) on every push and pull request:
 - **test**: the suite on Python 3.11 with django CMS 5.0 LTS and Django 5.2, 3.12 with django CMS 5.1 and Django 5.2, 3.13 with django CMS 5.1 and Django 6 (plus the versioning test), and 3.14 with django CMS 5.1 and Django 6.
 - **demo**: builds the demo image, starts it twice against PostgreSQL with the stand-in (`tests/demo-check.sh`): demo accounts created once and never duplicated, no passwords in the log, the editor's permissions, `supertext_check`, the public ping and the `installed` and `check` reports the stand-in received (`GET /reports`; never the key), translation of the sample page into three languages, the skip on a second run, and the German and French pages with their translated slugs and markup.
 
+`.github/workflows/e2e.yml` runs the end-to-end test against the real Supertext API and regenerates the docs screenshots (see *End-to-end tests*); `checks.yml` and `links.yml` lint the workflows and check the links (see *Code quality and security checks*).
+
+## End-to-end tests
+
+The unit tests and the CI demo check use fakes. `.github/workflows/e2e.yml` also tests against the **real Supertext API**, so changes on Supertext's side (language codes, regional variants, formatting, rate limits) show up. It runs on every push to `main` that touches the package, the demo or the tests, on pull requests that change the E2E test or workflow, every Monday (05:18 UTC), and by hand (*Actions → E2E → Run workflow*). It builds the demo image once (Docker layer cache in GitHub Actions) and starts it twice on a PostgreSQL service, each with its own new database (`DJANGOCMS_DB_NAME` `djlive`/`djdocs`) and demo accounts made up for the run:
+
+1. **Real API** (repository or organization secret `SUPERTEXT_API_KEY`; without it these steps are skipped with a warning). Version reports are off (`SUPERTEXT_VERSION_REPORTS=0`), so CI runs don't appear in the Commando Center.
+   - `tests/e2e/features.mjs` asks the live `GET features` (cost-free, no plugin or SDK code) whether every pair the demo translates (`en` → `de-CH`, `fr-CH`, `it-CH`, the codes the package sends for `de-ch`, `fr-ch`, `it-ch`) is offered; a missing pair fails the run. Whether the package's own language list matches the API is the SDK's job (its own tests).
+   - `tests/e2e/live.mjs` (Playwright) logs in as the demo editor (`DEMO_EDITOR_*`), opens every English page in edit mode and translates it through the toolbar's *Language → Translate with Supertext* dialog into `de-ch`, `fr-ch` and `it-ch`. The dialog must show no error and report every language as created. Then the database is checked: every page has a page content in each language with its own URL and the source's template and menu settings, every translated field (title, page title, menu title, description, text plugin body) is filled and at least 80 % of them changed (single words may stay the same), the text plugins match the source's (same placeholders and types, the source's untouched), no `data-st-id`/placeholder is left, bold, italics, links (with their addresses), headings, list items and inline plugins are kept, the text is in the target language (common words of each language counted) and de-CH has no "ß". Each translated page must be shown at its new address. The demo has no djangocms-versioning, so new languages are online at once (`tests/test_versioning.py` covers drafts). Translating again with *Overwrite existing translations* must update the same page contents (no duplicated page contents, URLs or plugins; plugins are replaced by new copies by design, see *Known limitations*), leave English untouched, and the translation log must contain only successful translations. Each run translates the two demo pages twice into three languages (around 5,000 characters on the key's account).
+2. **Stand-in API**: the docs screenshots (`tests/docs/screenshots.mjs`, see *Docs screenshots*), so the images don't change with each machine translation. If `docs/images/` changed, a second job (only on `main`) pushes the branch `automation/docs-screenshots` and opens (or updates) the pull request "Docs: regenerate screenshots". This needs *Settings → Actions → General → Allow GitHub Actions to create and approve pull requests*.
+
+If a run fails, the artifact `e2e-debug` has screenshots of the dialog results (`tests/e2e/artifacts`), the logs of both demo containers and the stand-in log. Locally:
+
+```bash
+cd tests/e2e && npm install && npx playwright install chromium
+# fresh demo (new database) with a real SUPERTEXT_API_KEY, e.g. on port 8081 with DJANGOCMS_DB_NAME=djlive
+SUPERTEXT_API_KEY=… E2E_TARGETS=de-CH,fr-CH,it-CH node features.mjs
+DJANGOCMS_URL=http://127.0.0.1:8081 DATABASE_URL=postgresql://user:pass@127.0.0.1:5432/djlive \
+  EDITOR_EMAIL=… EDITOR_PASSWORD=… npm run live
+```
+
+`live.mjs` also passes against the stand-in API (the stand-in returns real translations for the demo pages), which is how to try changes to it without a key. `E2E_LANGUAGES` (default: every language the dialog offers) limits the target languages.
+
 ## Demo (Railway)
 
 The public demo is a container built from `demo/Dockerfile`: django CMS 5.1 with djangocms-text and this package, English plus German, French and Italian (Switzerland), a home page and a sample article. It runs on Railway in the `supertext-cms-demos` project, service `djangoCMS`, region EU West (Amsterdam): <https://djangocms-production.up.railway.app/en/> (admin: `/en/admin/`). The data lives in a `djangocms` database on the project's PostgreSQL service.
