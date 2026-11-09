@@ -1,7 +1,7 @@
 # Supertext django CMS demo: django CMS 5 + djangocms-text + this package, on PostgreSQL.
 # Build context is the repository root:
 #   docker build -f demo/Dockerfile -t supertext-djangocms-demo .
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app

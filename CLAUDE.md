@@ -84,7 +84,7 @@ Commando Center (version reports, API key check, ping): `djangocms_supertext/rep
 
 ## This repo
 
-- Before committing: `pytest` (unit tests plus django CMS end to end on SQLite); with djangocms-versioning installed also `pytest --ds=tests.settings_versioning tests/test_versioning.py`. CI also runs django CMS 4.x/5.0/5.1 and the demo against PostgreSQL and the stand-in (`tests/demo-check.sh`).
+- Before committing: `pytest` (unit tests plus django CMS end to end on SQLite); with djangocms-versioning installed also `pytest --ds=tests.settings_versioning tests/test_versioning.py`. CI also runs django CMS 5.0/5.1 and the demo against PostgreSQL and the stand-in (`tests/demo-check.sh`).
 - New options go in `djangocms_supertext/conf.py` **and** the settings table in `docs/INSTALLATION.md`.
 - Field rules live in `djangocms_supertext/translator.py` (`PAGE_FIELDS`) and `conf.DEFAULT_PLUGIN_FIELDS`; keep "Field rules" in `docs/DEVELOPER.md` and "What is translated" in `docs/USER_GUIDE.md` in sync.
 - Admin strings (including the error messages in `client.py`, marked with its own `gettext_noop`): update `djangocms_supertext/locale/{de,fr,it}/LC_MESSAGES/django.po` and recompile each `.mo`; `tests/test_locale.py` checks they are complete (`python -c "import polib; polib.pofile('…/django.po').save_as_mofile('…/django.mo')"`).

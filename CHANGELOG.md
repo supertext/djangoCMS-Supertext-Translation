@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## Unreleased
 
+- Removed: support for django CMS 4.1 (end of life since April 2026); the minimum is now django CMS 5.0 LTS.
+- Removed: support for Django 4.2 (end of life since April 2026); the minimum is now Django 5.2 LTS (django CMS 5.0 runs on it).
+- Removed: support for Python 3.10 (end of life since October 2026); the minimum is now Python 3.11.
+- Changed: the demo runs on Python 3.14.
 ### Added
 
 - Docs: demo movie in the README (`docs/images/demo.gif`, recorded from the demo against the stand-in with `tests/docs/movie.mjs`; the MP4 version, not committed, is narrated with the Piper voice “alba”) and an install and configuration movie (`tests/docs/movie-install.mjs`: pip install, `INSTALLED_APPS` and `LANGUAGES`, `migrate`, `SUPERTEXT_API_KEY` and `supertext_check`, then *Settings and connection* with *Test connection* and the Languages table; narrated MP4, not committed). The stand-in can keep files `in_progress` for a while (`STAND_IN_DELAY`).

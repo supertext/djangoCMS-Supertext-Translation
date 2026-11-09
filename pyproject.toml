@@ -9,9 +9,10 @@ description = "Supertext AI translation for django CMS: translate pages into the
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "Supertext AG", email = "support@supertext.com" }]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-    "django-cms>=4.1",
+    "django-cms>=5.0",
+    "Django>=5.2",
     "requests>=2.31",
 ]
 classifiers = [

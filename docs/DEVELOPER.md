@@ -4,7 +4,7 @@ How the package is built, how to work on it, and how it is released and deployed
 
 ## Architecture
 
-A Django app (`djangocms_supertext`, package `djangocms-supertext-translation`) for django CMS 4.1+ (page contents per language, placeholders per page content).
+A Django app (`djangocms_supertext`, package `djangocms-supertext-translation`) for django CMS 5.0+ (page contents per language, placeholders per page content).
 
 ```
 Toolbar (edit mode): Language → "Translate with Supertext…"        cms_toolbars.py
@@ -149,7 +149,7 @@ pytest
 
 CI (`.github/workflows/ci.yml`) on every push and pull request:
 
-- **test**: the suite on Python 3.11 with django CMS 4.x and Django 4.2, 3.12 with django CMS 5.0 and Django 5.2, 3.13 with django CMS 5.1 and Django 6 (plus the versioning test), and 3.14 with django CMS 5.1 and Django 6.
+- **test**: the suite on Python 3.11 with django CMS 5.0 LTS and Django 5.2, 3.12 with django CMS 5.1 and Django 5.2, 3.13 with django CMS 5.1 and Django 6 (plus the versioning test), and 3.14 with django CMS 5.1 and Django 6.
 - **demo**: builds the demo image, starts it twice against PostgreSQL with the stand-in (`tests/demo-check.sh`): demo accounts created once and never duplicated, no passwords in the log, the editor's permissions, `supertext_check`, the public ping and the `installed` and `check` reports the stand-in received (`GET /reports`; never the key), translation of the sample page into three languages, the skip on a second run, and the German and French pages with their translated slugs and markup.
 
 ## Demo (Railway)
@@ -162,7 +162,7 @@ The public demo is a container built from `demo/Dockerfile`: django CMS 5.1 with
 
 | File | Purpose |
 | --- | --- |
-| `Dockerfile` | `python:3.13-slim`, the demo's requirements and this package (installed from the repository), `collectstatic` |
+| `Dockerfile` | `python:3.14-slim`, the demo's requirements and this package (installed from the repository), `collectstatic` |
 | `entrypoint.sh` | Every start: creates the database if missing, `migrate`, `demo_setup`, then gunicorn on `$PORT` |
 | `demo/settings.py` | Settings from environment variables; PostgreSQL via `DATABASE_URL` (database name `DJANGOCMS_DB_NAME`); WhiteNoise; `CMS_PERMISSION = False`; Supertext with `SITE_URL` from `RAILWAY_PUBLIC_DOMAIN` |
 | `site_setup/` | The page template (`page.html` with a language chooser) and the `demo_setup` command (also chooses `de-CH`, `fr-CH`, `it-CH` with the formal tone on the settings page for languages nobody has chosen yet; `en` uses the default `en-US`) |
