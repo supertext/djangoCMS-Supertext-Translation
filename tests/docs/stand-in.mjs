@@ -4,6 +4,8 @@
  * returns German, French and Italian for the demo's sample article (samples.json: real
  * Supertext output, keyed by target language's primary subtag).
  * Unknown text comes back as "[<target>] text". Listens on :8765 (any API key).
+ *
+ * STAND_IN_DELAY=<seconds>: files stay `in_progress` that long (the demo movie shows the waiting state).
  */
 import http from 'node:http'
 import { randomBytes } from 'node:crypto'
@@ -19,6 +21,7 @@ const samples = Object.fromEntries(
   ]),
 )
 const files = new Map()
+const delayMs = Number(process.env.STAND_IN_DELAY || 0) * 1000
 // Exactly the target codes the live API accepts (the SDK's Languages.TARGETS, GET features, October 2026);
 // false: no formal/informal for that target.
 const TARGETS = {
@@ -62,14 +65,14 @@ http
         return send(400, { error_code: 'FEATURE_ERROR', source_lang: form.get('source_lang'), target_lang: target })
       }
       const id = randomBytes(6).toString('hex')
-      files.set(id, { html: await file.text(), target })
+      files.set(id, { html: await file.text(), target, at: Date.now() })
       return send(200, { file_id: id })
     }
     const match = path.match(/file\/([a-f0-9]+)(\/status|\/translation)?$/)
     const file = match && files.get(match[1])
     if (!file) return send(404, {})
     if (req.method === 'DELETE') { files.delete(match[1]); return send(200, {}) }
-    if (match[2] === '/status') return send(200, { status: 'done' })
+    if (match[2] === '/status') return send(200, { status: Date.now() - file.at < delayMs ? 'in_progress' : 'done' })
     const known = samples[file.target.split('-')[0]] ?? new Map()
     const html = file.html.replace(/(<div data-st-id="\d+">)([\s\S]*?)(<\/div>\n)/g, (all, open, inner, close) => {
       const hit = known.get(norm(inner)) ?? known.get(norm(decode(inner)))

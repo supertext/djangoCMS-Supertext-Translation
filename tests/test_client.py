@@ -1,6 +1,6 @@
 import pytest
 
-from djangocms_supertext.client import SDK_VERSION, Segment, SupertextClient, SupertextError, base_url_for, normalize_key
+from djangocms_supertext.client import REVIEW_URL, SDK_VERSION, Segment, SupertextClient, SupertextError, base_url_for, normalize_key
 from tests.fake import FakeSession
 
 
@@ -100,3 +100,39 @@ def test_missing_key():
 def test_environments():
     assert base_url_for("staging") == "https://api.staging.supertext.com/v1/"
     assert base_url_for("live", "http://127.0.0.1:8765/v1/") == "http://127.0.0.1:8765/v1/"
+
+
+def test_user_agent_names_the_plugin_and_its_version():
+    from djangocms_supertext import __version__
+
+    session = FakeSession()
+    client(session).validate_api_key()
+    assert session.calls[0]["headers"]["User-Agent"].endswith(f" djangoCMS-Supertext-Translation/{__version__}")
+
+
+def test_review_client_uses_the_review_url_for_all_calls():
+    session = FakeSession(statuses=["running", "done"])
+    direct = SupertextClient("test-key", "https://api.test/v1/", session=session, poll_interval=0, sleep=lambda s: None, review_url="https://review.test/v1")
+    assert direct.for_review(False) is direct
+    review = direct.for_review(True)
+    assert review is not direct and review is direct.for_review(True)  # created once
+    assert review.user_agent == direct.user_agent and review.api_key == direct.api_key
+    review.translate_document('<div data-st-id="0">Hello</div>', "de-CH", "en")
+    assert [(c["method"], c["url"]) for c in session.calls] == [
+        ("POST", "https://review.test/v1/translate/ai/file"),
+        ("GET", "https://review.test/v1/translate/ai/file/f1/status"),
+        ("GET", "https://review.test/v1/translate/ai/file/f1/status"),
+        ("GET", "https://review.test/v1/translate/ai/file/f1/translation"),
+        ("DELETE", "https://review.test/v1/translate/ai/file/f1"),
+    ]
+    assert session.calls[0]["headers"]["Authorization"] == "Supertext-Auth-Key test-key"
+
+
+@pytest.mark.parametrize("review_url", ["", "  ", "https://api.test/v1"])
+def test_no_review_client_without_a_separate_review_url(review_url):
+    direct = SupertextClient("test-key", "https://api.test/v1/", session=FakeSession(), review_url=review_url)
+    assert direct.for_review(True) is direct
+
+
+def test_review_url_is_supertexts_review_service():
+    assert REVIEW_URL == "https://localizationreview-production.up.railway.app/v1/"

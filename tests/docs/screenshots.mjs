@@ -7,6 +7,7 @@
  *   DEMO_ADMIN_EMAIL / DEMO_ADMIN_PASSWORD     settings, page tree (superuser)
  *   DEMO_EDITOR_EMAIL / DEMO_EDITOR_PASSWORD   translating (Editors group)
  */
+import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const B = process.env.BASE_URL || 'http://127.0.0.1:8095'
@@ -17,6 +18,19 @@ const SITE_DOMAIN = process.env.SITE_DOMAIN || 'djangocms-production.up.railway.
 const need = (name) => process.env[name] || (() => { throw new Error(`Set ${name}`) })()
 
 const browser = await chromium.launch()
+
+/** An exported HTML file "translated" with samples.json (what the translator would send back). */
+const SAMPLES = JSON.parse(readFileSync(new URL('samples.json', import.meta.url), 'utf8'))
+const norm = (s) => s.replace(/\s+/g, ' ').replace(/> </g, '><').trim()
+const decode = (s) => s.replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+const encode = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+function translateHtml(html, lang) {
+  const known = new Map(Object.entries(SAMPLES[lang]).map(([k, v]) => [norm(k), v]))
+  return html.replace(/(<div data-st-id="[^"]+">)([\s\S]*?)(<\/div>)/g, (all, open, inner, close) => {
+    const hit = known.get(norm(inner)) ?? known.get(norm(decode(inner)))
+    return hit === undefined ? all : open + (known.has(norm(inner)) ? hit : encode(hit)) + close
+  })
+}
 
 async function session(email, password) {
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1, locale: 'en-US' })).newPage()
@@ -76,6 +90,22 @@ async function openDialog(page) {
   await frame.locator('input[name=targets][value="de-ch"]').check()
   await frame.locator('[data-supertext-warning]').waitFor({ state: 'visible' })
   await shot(page, modal, '04-overwrite-warning.png')
+  await frame.locator('input[name=targets][value="de-ch"]').uncheck()
+
+  // Export for translation (HTML into Italian), then import the translated file.
+  const exportBox = frame.locator('#st-export')
+  await exportBox.scrollIntoViewIfNeeded()
+  await frame.locator('input[name="export-format"][value="html"]').check()
+  await frame.locator('input[name="export-targets"][value="it-ch"]').check()
+  await exportBox.screenshot({ path: OUT + '09-export.png' })
+  const [download] = await Promise.all([page.waitForEvent('download'), exportBox.locator('input[type=submit]').click()])
+  const exported = readFileSync(await download.path(), 'utf8')
+  await frame.locator('input[name="import-file"]').setInputFiles({ name: download.suggestedFilename(), mimeType: 'text/html', buffer: Buffer.from(translateHtml(exported, 'it')) })
+  await frame.locator('input[name="import-overwrite"]').check()
+  await frame.locator('#st-import input[type=submit]').click()
+  await frame.locator('.st-import-results').waitFor({ timeout: 60_000 })
+  await page.waitForTimeout(600)
+  await frame.locator('#st-import').screenshot({ path: OUT + '10-import-summary.png' })
 
   // The German page
   await go(page, '/de-ch/schweizer-schokolade-weltweit-versandt/')
@@ -96,6 +126,10 @@ async function openDialog(page) {
   const main = await page.locator('#content-main').boundingBox()
   const messages = await page.locator('.messagelist').boundingBox()
   await page.screenshot({ path: OUT + '06-settings.png', fullPage: true, clip: { x: main.x - 20, y: messages.y - 10, width: 800, height: main.y + main.height - messages.y + 30 } })
+  // The Supertext languages: one select per django CMS language
+  const languages = await page.locator('[data-supertext-languages]').boundingBox()
+  const heading = await page.locator('[data-supertext-languages-heading]').boundingBox()
+  await page.screenshot({ path: OUT + '08-languages.png', fullPage: true, clip: { x: languages.x - 10, y: heading.y - 10, width: Math.min(800, languages.width + 20), height: languages.y + languages.height - heading.y + 20 } })
 
   await go(page, '/en/admin/djangocms_supertext/translation/')
   await page.screenshot({ path: OUT + '07-translations-log.png', clip: { x: 0, y: 0, width: 1280, height: 460 } })

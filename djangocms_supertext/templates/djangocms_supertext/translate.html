@@ -22,6 +22,13 @@
   .st .st-results .error::before { content: "✕ "; }
   .st .errornote { margin: 0 0 12px; }
   .st select { min-width: 220px; }
+  .st .st-files { border-top: 1px solid var(--hairline-color); margin-top: 22px; padding-top: 14px; }
+  .st .st-files h2 { font-size: 15px; margin: 0 0 8px; }
+  .st .st-files ul.st-radio, .st .st-files ul.st-targets { list-style: none; padding: 0; margin: 0; }
+  .st .st-files ul.st-radio li, .st .st-files ul.st-targets li { margin: 4px 0; list-style: none; }
+  .st .st-import-results { margin: 0 0 12px; padding: 0; list-style: none; }
+  .st .st-import-results ul { margin: 2px 0 8px 18px; padding: 0; }
+  .st .st-import-results .error { color: #b91c1c; }
 </style>
 {% endblock %}
 {% block breadcrumbs %}{% endblock %}
@@ -87,6 +94,62 @@
     <p class="st-hint">{% translate "Supertext translates the saved content of the source language. Each language takes a few seconds." %}</p>
     <input type="submit" class="default" value="{% translate 'Translate' %}" data-supertext-submit>
   </form>
+
+  <section class="st-files" id="st-export">
+    <h2>{% translate "Export for translation" %}</h2>
+    <p class="st-hint">{% translate "Translate the file in a translation tool, by a translator or in the Supertext web app, then import it here." %}</p>
+    {% if export_error %}<p class="errornote">{{ export_error }}</p>{% endif %}
+    {% if export_form.non_field_errors %}<p class="errornote">{{ export_form.non_field_errors|join:" " }}</p>{% endif %}
+    <form method="post" action="{{ export_url }}" data-supertext-export>
+      {% csrf_token %}
+      <fieldset>
+        <label class="st-label" for="{{ export_form.source.id_for_label }}">{{ export_form.source.label }}</label>
+        {{ export_form.source }}
+      </fieldset>
+      <fieldset>
+        <legend>{{ export_form.format.label }}</legend>
+        <ul class="st-radio">
+          {% for choice in export_form.format %}<li>{{ choice.tag }} <label for="{{ choice.id_for_label }}">{{ choice.choice_label }}</label></li>{% endfor %}
+        </ul>
+      </fieldset>
+      <fieldset>
+        <legend>{{ export_form.targets.label }}</legend>
+        <ul class="st-targets">
+          {% for choice in export_form.targets %}<li data-language="{{ choice.data.value }}">{{ choice.tag }} <label for="{{ choice.id_for_label }}">{{ choice.choice_label }} <code>{{ choice.data.value }}</code></label></li>{% endfor %}
+        </ul>
+        {% if export_form.targets.errors %}<p class="errornote">{{ export_form.targets.errors|join:" " }}</p>{% endif %}
+      </fieldset>
+      <input type="submit" value="{% translate 'Download file' %}">
+    </form>
+  </section>
+
+  <section class="st-files" id="st-import">
+    <h2>{% translate "Import translation" %}</h2>
+    {% if import_error %}<p class="errornote">{{ import_error }}</p>{% endif %}
+    {% if import_results is not None %}
+      <ul class="st-import-results" aria-live="polite">
+        {% for job in import_results %}
+          <li><strong>{{ job.title }} → {{ job.language }}</strong>
+            <ul>
+              {% if job.error %}<li class="error">{{ job.error }}</li>{% endif %}
+              {% for line in job.lines %}<li>{{ line }}</li>{% endfor %}
+            </ul>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    <form method="post" action="{{ import_url }}" enctype="multipart/form-data" data-supertext-import>
+      {% csrf_token %}
+      <fieldset>
+        <label class="st-label" for="{{ import_form.file.id_for_label }}">{{ import_form.file.label }}</label>
+        <input type="file" name="{{ import_form.file.html_name }}" id="{{ import_form.file.id_for_label }}" accept=".xlf,.xliff,.html,.htm" required>
+        {% if import_form.file.errors %}<p class="errornote">{{ import_form.file.errors|join:" " }}</p>{% endif %}
+      </fieldset>
+      <p>{{ import_form.include_changed }} <label for="{{ import_form.include_changed.id_for_label }}">{{ import_form.include_changed.label }}</label></p>
+      <p>{{ import_form.overwrite }} <label for="{{ import_form.overwrite.id_for_label }}">{{ import_form.overwrite.label }}</label></p>
+      <input type="submit" value="{% translate 'Import translation' %}">
+    </form>
+  </section>
 </div>
 <script>
 (function () {
@@ -111,6 +174,22 @@
     button.value = '{{ _("Translating…")|escapejs }}';
   });
   update();
+
+  // The django CMS modal treats a submitted form as "saved" (it hides the dialog and reloads the
+  // page) once its default button was used; the export and import forms stay in the dialog.
+  // These listeners run before the modal's, which is added when the dialog has loaded.
+  const exportForm = document.querySelector('[data-supertext-export]');
+  exportForm.addEventListener('submit', (event) => event.stopImmediatePropagation());
+  const importForm = document.querySelector('[data-supertext-import]');
+  importForm.addEventListener('submit', (event) => {
+    event.stopImmediatePropagation();
+    // Too large files are refused here already (the server checks again before reading).
+    const input = importForm.querySelector('input[type=file]');
+    if (input.files.length && input.files[0].size > {{ max_upload }}) {
+      event.preventDefault();
+      alert('{{ _("The file is too large (at most 10 MB).")|escapejs }}');
+    }
+  });
 })();
 </script>
 {% endblock %}

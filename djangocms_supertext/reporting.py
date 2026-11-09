@@ -39,12 +39,11 @@ from ._vendor.plugin_health import (
 )
 from ._vendor.supertext import SDK_VERSION
 from ._vendor.supertext import v1 as sdk
-from .client import SupertextClient
+from .client import PLUGIN_NAME, SupertextClient
 
 logger = logging.getLogger(__name__)
 
-#: The GitHub repository name (the center reads the latest release from it).
-PLUGIN_NAME = "djangoCMS-Supertext-Translation"
+#: PLUGIN_NAME (from .client): the GitHub repository name (the center reads the latest release from it).
 STATE_KEY = "reporter"
 
 #: For tests: extra options for the Plugin Health reporter (transport, report_url, now, key_checker).

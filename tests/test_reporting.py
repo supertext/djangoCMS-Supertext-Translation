@@ -197,18 +197,50 @@ def test_key_check_messages_in_four_languages():
     assert html.count('target="_blank" rel="noopener"') == 2 and "supertext.com → Integrations → API</a>" in html
 
 
-def test_language_rows_show_unmapped_and_unsupported_tone():
-    options = conf.load({"LANGUAGES": {"en-us": {"politeness": "more"}, "de": {"code": "de-CH"}}})
-    assert st_admin._language_row(options, {"code": "it"})["target"] is None
-    assert st_admin._language_row(options, {"code": "de"}) | {"name": ""} == {
-        "code": "de", "name": "", "target": "de-CH", "mapped": True, "politeness": "default", "politeness_unsupported": False,
-    }
+def test_language_rows_preselect_saved_override_or_suggestion():
+    options = conf.load({"LANGUAGES": {"en-us": {"politeness": "more"}, "de": {"code": "de-CH"}}}, saved={"fr": {"code": "fr-CH"}})
+    it = st_admin._language_row(options, {"code": "it"})
+    assert (it["selected"], it["suggested"], it["target"]) == ("it-IT", "it-IT", "it-IT")  # the SDK default
+    de = st_admin._language_row(options, {"code": "de"})
+    assert (de["selected"], de["override"], de["target"], de["politeness_supported"]) == ("de-CH", "de-CH", "de-CH", True)
+    fr = st_admin._language_row(options, {"code": "fr"})
+    assert (fr["selected"], fr["override"], fr["suggested"]) == ("fr-CH", "", "")
+    ie = st_admin._language_row(options, {"code": "en-ie"})
+    assert (ie["selected"], ie["target"]) == ("", None)  # no default: "— choose —"
     assert st_admin._language_row(options, {"code": "en-us"})["politeness_unsupported"] is True
 
 
-def test_settings_page_marks_unmapped_languages(admin_client):
-    languages = {1: [{"code": "en", "name": "English"}, {"code": "it", "name": "Italiano"}]}
-    with override_settings(CMS_LANGUAGES=languages, LANGUAGES=[("en", "English"), ("it", "Italiano")]):
+def test_settings_page_shows_a_select_per_language(admin_client):
+    languages = {1: [{"code": "en", "name": "English"}, {"code": "en-ie", "name": "English (Ireland)"}]}
+    with override_settings(CMS_LANGUAGES=languages, LANGUAGES=[("en", "English"), ("en-ie", "English (Ireland)")]):
         response = admin_client.get(reverse("admin:djangocms_supertext_settings"))
-    assert b"Not mapped: set a Supertext code for it under LANGUAGES" in response.content
-    assert b"<code>gsw-u-sd-chzh</code>" in response.content  # the list of Supertext languages
+    html = response.content.decode()
+    assert '<select name="target-en"' in html and '<select name="target-en-ie"' in html
+    assert '<option value="en-US" selected>English (United States) (en-US)</option>' in html  # suggested for en
+    assert 'data-supertext-unmapped' in html  # en-ie: no default, must be chosen
+    assert '<option value="gsw-u-sd-chzh">' in html
+
+
+def test_saving_the_languages(admin_client):
+    from djangocms_supertext.models import LanguageSetting
+
+    url = reverse("admin:djangocms_supertext_settings")
+    data = {"action": "languages", "target-en": "en-GB", "politeness-en": "more", "target-de-ch": "de-CH", "politeness-de-ch": "less", "target-fr-ch": ""}
+    response = admin_client.post(url, data)
+    assert response.status_code == 302
+    rows = {row.language: (row.supertext_code, row.politeness) for row in LanguageSetting.objects.all()}
+    # en-GB has no formal/informal; de-ch's politeness is set under LANGUAGES in the SUPERTEXT setting (kept "default").
+    assert rows == {"en": ("en-GB", "default"), "de-ch": ("de-CH", "default"), "fr-ch": ("", "default")}
+    assert conf.load().target_code("en") == "en-GB" and conf.load().target_code("fr-ch") == "fr-CH"
+
+    response = admin_client.post(url, {"action": "languages", "target-en": "xx-YY"})
+    assert response.status_code == 200 and "xx-YY is not a Supertext language." in response.content.decode()
+    assert LanguageSetting.objects.get(language="en").supertext_code == "en-GB"  # not changed
+
+
+def test_target_names_follow_the_admin_language():
+    with translation.override("de"):
+        labels = dict(st_admin.target_choices())
+    assert labels[""] == "— auswählen —"
+    assert labels["de-CH"] == "Deutsch (de-CH)" and labels["gsw-u-sd-chzh"].endswith("(gsw-u-sd-chzh)")
+    assert dict(st_admin.target_choices())["fr-CH"] == "French (Switzerland) (fr-CH)"

@@ -20,6 +20,7 @@
       {% if check %}{{ check_html }} <span class="help">{% blocktranslate trimmed with time=checked_at|date:"DATETIME_FORMAT"|default:check.checked_at %}checked {{ time }}{% endblocktranslate %}</span>{% else %}{% translate "Not checked yet." %}{% endif %}
     </td></tr>
     <tr><th>{% translate "API" %}</th><td><code data-supertext-endpoint>{{ options.base_url }}</code></td></tr>
+    <tr><th>{% translate "Review service" %}</th><td data-supertext-review-url>{% if options.review_enabled %}<code>{{ options.review_url }}</code>{% else %}{% translate "Off (REVIEW_URL is empty)" %}{% endif %}</td></tr>
     <tr><th>{% translate "Timeout per language" %}</th><td>{{ options.timeout|floatformat:0 }} s</td></tr>
     <tr><th>{% translate "Plugin version" %}</th><td data-supertext-version>{% if version.url %}<a href="{{ version.url }}" target="_blank" rel="noopener">{{ version.number }}</a>{% else %}{{ version.number }}{% endif %}</td></tr>
   </table>
@@ -39,33 +40,61 @@
   </table>
   <p class="help" style="margin-bottom: 28px">{% translate "Sends the site URL and the versions of this plugin, django CMS and the runtime to Supertext after an update and when the API key changes, so Supertext support can see which version you run. No content, no API key and no personal data are sent. Turn it off with VERSION_REPORTS: False in the SUPERTEXT setting or SUPERTEXT_VERSION_REPORTS=0." %}</p>
 
-  <h2>{% translate "Languages" %}</h2>
-  <p class="help">{% translate "The django CMS languages of each site, with the Supertext language and form of address they are translated with. A language whose code is not a Supertext code needs a code under LANGUAGES in the SUPERTEXT setting." %}</p>
-  {% for item in sites %}
-    <h3>{{ item.site.name }} <span class="help" data-supertext-domain>{{ item.site.domain }}</span></h3>
+  <h2 data-supertext-languages-heading>{% translate "Languages" %}</h2>
+  <p class="help">{% translate "Choose the Supertext language for each django CMS language. It is used in both directions: to translate into the language and from it. A suggestion is preselected where Supertext has an obvious one (de → German (Germany), en → English (US), es-es → Spanish); choose another one if your site means something else (e.g. de-CH for Swiss German)." %}</p>
+  <form method="post" data-supertext-languages>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="languages">
     <table>
-      <thead><tr><th>{% translate "Language" %}</th><th>{% translate "Supertext language" %}</th><th>{% translate "Form of address" %}</th></tr></thead>
+      <thead><tr><th>{% translate "Language" %}</th><th>{% translate "Supertext language" %}</th><th>{% translate "Form of address" %}</th><th>{% translate "Translation review" %}</th></tr></thead>
       <tbody>
-        {% for lang in item.languages %}
-          <tr>
-            <td>{{ lang.name }} <code>{{ lang.code }}</code></td>
-            <td data-supertext-target="{{ lang.code }}">{% if lang.target %}<code>{{ lang.target }}</code>{% else %}<strong class="errornote" style="display: inline; padding: 2px 6px; margin: 0">{% translate "Not mapped: set a Supertext code for it under LANGUAGES" %}</strong>{% endif %}</td>
-            <td>{% if lang.politeness == "more" %}{% translate "Formal (Sie, vous)" %}{% elif lang.politeness == "less" %}{% translate "Informal (du, tu)" %}{% else %}{% translate "Default" %}{% endif %}{% if lang.politeness_unsupported %} <strong class="errornote" style="display: inline; padding: 2px 6px; margin: 0" data-supertext-no-politeness>{% translate "Supertext offers no formal/informal choice for this language" %}</strong>{% endif %}</td>
+        {% for lang in languages %}
+          <tr data-supertext-language="{{ lang.code }}">
+            <td>{{ lang.name }} <code>{{ lang.code }}</code>{% if sites|length > 1 %}<br><span class="help" data-supertext-domain>{% for site in lang.sites %}{{ site.domain }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}</td>
+            <td data-supertext-target="{{ lang.code }}">
+              <select name="target-{{ lang.code }}" data-supertext-select{% if lang.override %} disabled{% endif %} aria-label="{% blocktranslate trimmed with name=lang.name %}Supertext language for {{ name }}{% endblocktranslate %}">
+                {% for value, label in target_choices %}<option value="{{ value }}"{% if value == lang.selected %} selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+              {% if lang.override %}<br><span class="help" data-supertext-override>{% translate "Set under LANGUAGES in the SUPERTEXT setting, which wins over this page." %}</span>
+              {% elif lang.suggested %}<br><span class="help" data-supertext-suggested>{% translate "Suggested. It is used until you choose another one." %}</span>
+              {% elif not lang.selected %}<br><strong class="errornote" style="display: inline-block; padding: 2px 6px; margin: 4px 0 0" data-supertext-unmapped>{% translate "No Supertext language: choose one, otherwise this language cannot be translated." %}</strong>{% endif %}
+            </td>
+            <td>
+              <select name="politeness-{{ lang.code }}" data-supertext-politeness{% if lang.override_politeness %} disabled{% endif %}{% if not lang.politeness_supported %} hidden{% endif %}>
+                <option value="default"{% if lang.politeness == "default" %} selected{% endif %}>{% translate "Default" %}</option>
+                <option value="more"{% if lang.politeness == "more" %} selected{% endif %}>{% translate "Formal (Sie, vous)" %}</option>
+                <option value="less"{% if lang.politeness == "less" %} selected{% endif %}>{% translate "Informal (du, tu)" %}</option>
+              </select>
+              <span class="help" data-supertext-no-politeness-choice{% if lang.politeness_supported %} hidden{% endif %}>{% translate "No choice for this language" %}</span>
+              {% if lang.override_politeness %}<br><span class="help">{% translate "Set under LANGUAGES in the SUPERTEXT setting." %}</span>{% endif %}
+              {% if lang.politeness_unsupported %}<br><strong class="errornote" style="display: inline; padding: 2px 6px; margin: 0" data-supertext-no-politeness>{% translate "Supertext offers no formal/informal choice for this language" %}</strong>{% endif %}
+            </td>
+            <td>
+              <input type="checkbox" name="review-{{ lang.code }}" value="1" data-supertext-review{% if lang.review %} checked{% endif %}{% if lang.override_review or not options.review_enabled %} disabled{% endif %} aria-label="{% blocktranslate trimmed with name=lang.name %}Translation review for {{ name }}{% endblocktranslate %}">
+              {% if lang.override_review %}<br><span class="help">{% translate "Set under LANGUAGES in the SUPERTEXT setting." %}</span>{% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
-  {% endfor %}
-  <details style="margin-top: 20px">
-    <summary>{% translate "Supertext languages" %}</summary>
-    <table>
-      <thead><tr><th>{% translate "Code" %}</th><th>{% translate "Language" %}</th><th>{% translate "Formal/informal" %}</th></tr></thead>
-      <tbody>
-        {% for target in supertext_targets %}
-          <tr><td><code>{{ target.code }}</code></td><td>{{ target.name }}</td><td>{{ target.politeness|yesno:"✓,–" }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </details>
+    <p class="help" data-supertext-review-help>{% translate "Translation review" %}: {% translate "Translations into this language go through Supertext's review service, so reviewers can check and correct them on the website with the Supertext Localization Review extension. Their corrections are used the next time the page is translated." %}</p>
+    <div class="submit-row" style="margin-top: 12px"><input type="submit" class="default" value="{% translate 'Save languages' %}"></div>
+  </form>
+  {{ politeness_targets|json_script:"supertext-politeness-targets" }}
+  <script>
+    (function () {
+      var formal = JSON.parse(document.getElementById('supertext-politeness-targets').textContent);
+      document.querySelectorAll('[data-supertext-language]').forEach(function (row) {
+        var target = row.querySelector('[data-supertext-select]');
+        var politeness = row.querySelector('[data-supertext-politeness]');
+        var none = row.querySelector('[data-supertext-no-politeness-choice]');
+        target.addEventListener('change', function () {
+          var offered = formal.indexOf(target.value) !== -1;
+          politeness.hidden = !offered;
+          none.hidden = offered;
+        });
+      });
+    })();
+  </script>
 </div>
 {% endblock %}

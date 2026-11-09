@@ -25,13 +25,14 @@ _apply(): create_page_content() (new language) or update the fields; replace the
 
 | Module | Responsibility |
 | --- | --- |
-| `client.py` | Wrapper around the bundled Supertext SDK (`_vendor/supertext`): requests through `requests`, segments packed into documents below the size limit, SDK error codes turned into translatable messages. No Django imports; session and `sleep` injectable for tests |
+| `client.py` | Wrapper around the bundled Supertext SDK (`_vendor/supertext`): requests through `requests`, segments packed into documents below the size limit, SDK error codes turned into translatable messages; `REVIEW_URL` and `for_review()` for languages with Translation review; User-Agent `djangoCMS-Supertext-Translation/<version>`. No Django imports; session and `sleep` injectable for tests |
 | `_vendor/supertext/` | Bundled copy of the Supertext Python SDK (see *Supertext SDK*). Never edit |
 | `_vendor/plugin_health/` | Bundled copy of Supertext Plugin Health (see *Supertext Plugin Health*). Never edit |
-| `conf.py` | `SUPERTEXT` setting + `SUPERTEXT_API_KEY` / `SUPERTEXT_API_URL` / `SUPERTEXT_VERSION_REPORTS`; language code → Supertext code (mapping, else exact match, else `unsupported_language`) and tone; `DEFAULT_PLUGIN_FIELDS` |
-| `translator.py` | Field rules, translation, creating/replacing the target language |
-| `models.py` | `Translation` (log; custom permission `translate`), `State` (key/value: the version reporter's JSON state) |
-| `admin.py` | Log list, translate dialog, settings page with the key check, *Test connection*, the reporting setting, the language table and the plugin version (read from `djangocms_supertext.__version__`; X.Y.Z links to the GitHub release `vX.Y.Z`), and the public ping route (all as admin URLs, no URL include needed) |
+| `conf.py` | `SUPERTEXT` setting + `SUPERTEXT_API_KEY` / `SUPERTEXT_API_URL` / `SUPERTEXT_REVIEW_URL` / `SUPERTEXT_VERSION_REPORTS`; *Translation review* per language (`Options.review()`: `LANGUAGES` → `review`, else the settings page); language code → Supertext code (mapping: `LANGUAGES` override, else the settings page's `LanguageSetting` rows; else exact match, else the SDK default, else `unsupported_language`) and tone; `DEFAULT_PLUGIN_FIELDS` |
+| `translator.py` | Field rules, translation, creating/replacing the target language (`collect()` and `apply()` are shared with the translation files) |
+| `files.py` | *Export for translation* / *Import translation*: XLIFF and HTML with the SDK's `files` (see *Translation files*) |
+| `models.py` | `Translation` (log; custom permission `translate`), `State` (key/value: the version reporter's JSON state), `LanguageSetting` (one row per django CMS language: `supertext_code`, `politeness`, `review`; migrations `0003_language_setting`, `0004_language_review`) |
+| `admin.py` | Log list, translate dialog (with the export and import forms: `page/<id>/export/`, `page/<id>/import/`), settings page with the key check, *Test connection*, the reporting setting, the Languages table (a `<select>` per django CMS language from the SDK's `target_options()`, preselected with the saved value, else `suggest_target()`, else *— choose —*; `save_languages` validates against the SDK list and skips what `LANGUAGES` overrides; `LanguageSettingAdmin` shows the rows in the plain Django admin) and the plugin version (read from `djangocms_supertext.__version__`; X.Y.Z links to the GitHub release `vX.Y.Z`), and the public ping route (all as admin URLs, no URL include needed) |
 | `reporting.py` | Commando Center: version reports and ping (Plugin Health's `InstallationReporter`), API key check (the SDK's `check_api_key`), site URL, ping path, state in `State`, the key-check messages |
 | `views.py`, `urls.py` | The public ping view; `urls.py` is the optional include for `/supertext/ping` |
 | `cms_toolbars.py` | The toolbar entry |
@@ -65,13 +66,26 @@ Auth header: `Authorization: Supertext-Auth-Key <key>`. The header name must be 
 
 **Rate limit:** the API limits requests per second per key (HTTP 429). The client retries a 429 up to 4 times, waiting for `Retry-After` if sent, otherwise 1, 2, 4 and 8 seconds plus jitter. Languages are translated one after the other.
 
+**Translation review** (`LanguageSetting.review`, per target language, off by default; `SUPERTEXT["LANGUAGES"][code]["review"]` overrides it): `translator.translate_page` takes `client.for_review(options.review(target))` for each target, a second `SupertextClient` with the same key, timeouts, `requests` session, `sleep` and User-Agent whose base URL is `REVIEW_URL` (default `client.REVIEW_URL`, the translation proxy of [Supertext Localization Review](https://github.com/Supertext/Localization-Review-Supertext-Translation); `SUPERTEXT_REVIEW_URL` wins when set). It is created once per client. Each document goes through the SDK's `translate_html` round trip (upload, status, download, delete) on one client, so a job is always collected by the client that submitted it. The proxy speaks the same API v1, forwards to the live Supertext API with the plugin's key, stores every segment per key and serves reviewers' corrections on the next upload, so nothing else changes in the plugin. `REVIEW_URL: ""` (or the same URL as the API) means `for_review()` always returns the direct client. The key check (`reporting.py` builds its own client), the version reports and the translation files never use the review service. Tests: `test_client.py` (all four calls to the review URL, one review client, none without a separate URL, the default), `test_conf.py` (default, `""`, the environment variable, per-language override) and `test_translator.py` (a review language through the review service while the other goes directly, `""` turns it off, the checkbox on the settings page).
+
 ## Supertext SDK
 
-The protocol above, the retries, the language list (`Languages`), the API key check (`check_api_key()`, `api_key_fingerprint()`) and the `data-st-id` document (plain text escaped with `<br>` for line breaks, HTML as is) come from the official Supertext Python SDK ([Supertext/Supertext-API-SDK-and-Guide](https://github.com/Supertext/Supertext-API-SDK-and-Guide)). The package ships a copy in `djangocms_supertext/_vendor/supertext/` (imported as `djangocms_supertext._vendor.supertext`, so an installed `supertext-sdk` can never clash with it); sites install nothing extra. The API lives in its `v1` subpackage (`djangocms_supertext._vendor.supertext.v1`, SDK 0.2.0+); the SDK uses relative imports, so the copy needs no rewriting. `COMMIT` and `VERSION` there name the SDK revision; `client.SDK_VERSION` reads it. Since SDK 0.3.0 the SDK provides only the client and the key check: version reports and the ping come from Supertext Plugin Health (below).
+The protocol above, the retries, the language list (`Languages`), the API key check (`check_api_key()`, `api_key_fingerprint()`), the translation files (`files`, SDK 0.5.0) and the `data-st-id` document (plain text escaped with `<br>` for line breaks, HTML as is) come from the official Supertext Python SDK ([Supertext/Supertext-API-SDK-and-Guide](https://github.com/Supertext/Supertext-API-SDK-and-Guide)). The package ships a copy in `djangocms_supertext/_vendor/supertext/` (imported as `djangocms_supertext._vendor.supertext`, so an installed `supertext-sdk` can never clash with it); sites install nothing extra. The API lives in its `v1` subpackage (`djangocms_supertext._vendor.supertext.v1`, SDK 0.2.0+); the SDK uses relative imports, so the copy needs no rewriting. `COMMIT` and `VERSION` there name the SDK revision; `client.SDK_VERSION` reads it. Since SDK 0.3.0 the SDK provides only the client and the key check: version reports and the ping come from Supertext Plugin Health (below).
 
 - Never edit `_vendor/`. Fix the SDK in its repository, then run `scripts/vendor-sdk.sh [ref]` (default `main`; `SDK_DIR=/path/to/clone` uses a local clone; it copies the package with its subpackages) and the tests.
 - `client.SupertextClient` keeps the package's interface (`translate_document`, `translate_segments`, `validate_api_key`) and turns every SDK error code into a `SupertextError` with a translatable template (`client.MESSAGES`). A new SDK error code needs a message there and in the three `.po` files.
 - The live API answers an unknown language (`xx-YY`) with HTTP 404 `INVALID_LANGUAGE_PAIR`; the SDK reports it as `invalid_language_pair` with both codes, shown as "Supertext does not support this language pair (en → xx-YY)".
+
+## Translation files (XLIFF and HTML)
+
+*Export for translation* and *Import translation* use the SDK's `files` module (`djangocms_supertext._vendor.supertext.files`, SDK 0.5.0; integration guide → *Translation files*). The glue is `files.py`; the views are `TranslationAdmin.export_view` (POST `page/<id>/export/`, fields `export-source`, `export-targets`, `export-format`; answers with the file as an attachment) and `import_view` (POST `page/<id>/import/`, multipart `import-file`, `import-include_changed`, `import-overwrite`; renders the dialog with the summary). Both need `djangocms_supertext.translate` and permission to change the page; the import checks the permission again for the page each job names.
+
+- Segments: `translator.collect()` (the units an API translation sends), keyed `page.<field>` (`page.title`, `page.menu_title`, …) and `plugin.<source plugin pk>.<field>` (`plugin.12.body`). The import collects them again, maps the keys back to unit indexes and writes through `translator.apply()`, the API translation's write-back (`_apply`: new language created, existing one only with *Overwrite existing translations*, drafts only with djangocms-versioning, the source's plugins copied, inline plugin ids remapped). Units without an imported text keep the source's text, as plugins are copies of the source's. A `Translation` log row with the message `XLIFF` or `HTML` records the import.
+- Job metadata: `plugin` `djangoCMS-Supertext-Translation`; `reference` **`page:<page id>:<source language>:<target language>`** with django CMS language codes (`page:12:en:fr-ch`); `sourceLanguage`/`targetLanguage` from `Options.source_code()`/`target_code()` (the mapping), else the django CMS code with `-`, so unmapped languages don't block an export.
+- File names `djangocms-page-<id>-<target code>.xlf`/`.html`, `djangocms-page-<id>.xlf` for several languages; `application/x-xliff+xml` / `text/html; charset=utf-8`.
+- Uploads over 10 MB are refused before they are read (`files.check_size(upload.size)`); the content is decoded and parsed in memory. The SDK refuses DTDs and markup the current source doesn't have.
+- The export and import forms stop the django CMS modal's own submit handler (`stopImmediatePropagation()` in `translate.html`): after the dialog's *Translate* button was used, the modal treats any submitted form as saved and hides the dialog.
+- `source_changed` results are written only with *Also import texts whose source changed since the export*; `untranslated`, `invalid_markup` and `missing` never.
 
 ## Supertext Plugin Health
 
@@ -84,12 +98,13 @@ Version reports to the Supertext Commando Center, the API key check result and t
 
 Supertext accepts exactly the codes its `GET features` lists (the SDK's `Languages`, from the live API): bare sources (`en`, `de`); targets in one exact form each, regional for German, English, French, Italian and Portuguese (`de-CH`, `en-US`, `pt-BR`), with a script for Chinese and Serbian (`zh-Hans`, `sr-Latn`), a dialect for Swiss German (`gsw-u-sd-chzh`), bare for the others (`es`, `nl`, `sl`). Anything else is HTTP 404 `INVALID_LANGUAGE_PAIR`; formal/informal for a target without it (`en-US`, `rm`, …) is HTTP 400 `FEATURE_ERROR` (`unsupported_feature`). The old default regions (`es-ES`, `sl-SI`, `zh-CN`) are rejected, so there are none.
 
-`conf.py` turns django CMS language codes into Supertext codes **without guessing**:
+`conf.py` turns django CMS language codes into Supertext codes with the SDK's `Languages.target()`/`source()` (**defaults only where obvious**):
 
-- **Target** (`Options.target_code`): the `LANGUAGES` → `code` mapping (sent as it is), else a django CMS code that equals a Supertext code apart from case and `_`/`-` (`de-ch` → `de-CH`, `es`), else `SupertextError` `unsupported_language` with `%(language)s`. `translator.translate_page` reports it for that language and sends nothing for it. `de`, `en` or `zh-cn` must be mapped.
-- **Source** (`Options.source_code`): the SDK's `Languages.source()` with the same mapping, which sends a mapped value in its source form (a mapped `de` → `de-CH` translates from `de`; one mapping for both directions), else the code's language (`en-us` → `en`), else `unsupported_language`.
-- **Politeness**: `client.translate_document` refuses `more`/`less` for a target whose `Languages.supports_politeness()` is `False` before sending (`unsupported_feature`), so the admin's setting is never silently dropped; the settings page warns about it.
-- The settings page shows each language's code, *Not mapped* for the others, and the full `Languages.TARGETS` list.
+- **Mapping** (`Options.mapping()`): the Supertext languages chosen on the settings page (`LanguageSetting` rows, read by `conf.saved_languages()` into `Options.saved`; `{}` before `migrate`), overridden per language by `SUPERTEXT["LANGUAGES"]` → `code` (`Options.languages`). `politeness` works the same way (`override_politeness`, else the saved value). `conf.load(options, saved=…)` lets tests pass both.
+- **Target** (`Options.target_code`): the mapping (sent as it is), else a django CMS code that equals a Supertext code apart from case and `_`/`-` (`de-ch` → `de-CH`, `es`), else the SDK default (`Languages.default_target`: `de` → `de-DE`, `en` → `en-US`, `fr` → `fr-FR`, `it` → `it-IT`, `pt` → `pt-PT`, `zh`/`zh-cn` → `zh-Hans`, `zh-tw` → `zh-Hant`, `sr` → `sr-Latn`, `es-es` → `es`), else `SupertextError` `unsupported_language` with `%(language)s` (`en-ie`, `de-li`, `gsw`, `sr-rs`). `translator.translate_page` reports it for that language and sends nothing for it; the message names the settings page.
+- **Source** (`Options.source_code`): the SDK's `Languages.source()` with the same mapping, which sends a mapped value in its source form (`de` chosen as `de-CH` translates from `de`; one mapping for both directions), else the code's language (`en-us` → `en`), else `unsupported_language`.
+- **Politeness**: `client.translate_document` refuses `more`/`less` for a target whose `Languages.supports_politeness()` is `False` before sending (`unsupported_feature`), so the admin's setting is never silently dropped. The settings page only offers the form of address where the chosen target supports it (a small script toggles it when the select changes) and `save_languages` stores `default` otherwise; it still warns about an unsupported tone set under `LANGUAGES`.
+- **The settings page** (`admin._language_row`): the select's value is the override, else the saved code, else `Languages.suggest_target()` (marked *Suggested*: that is what a translation uses until someone saves another one), else *— choose —* with the row marked (only languages without mapping **and** without default). Option labels are "Name (code)", the name from Django's `get_language_info()` in the admin's language where Django knows the code or its language, else the SDK's English name.
 
 `tests/fake.py` and `tests/docs/stand-in.mjs` accept exactly the SDK's target list (404 for anything else) and reject politeness where it isn't offered, like the live API.
 
@@ -124,10 +139,11 @@ Without `DATABASE_URL` the demo uses SQLite (`demo/db.sqlite3`). To work without
 pytest
 ```
 
-- `tests/test_client.py`: the SDK wrapper: protocol, auth header and prefix, 429 retries, errors (language pair included), clean-up, segments in one document. `tests/fake.py` reads the SDK's multipart body back.
-- `tests/test_conf.py`: settings, language codes (exact codes, no guessing, the mapping, sources) and the reporting setting.
-- `tests/test_translator.py`: end to end on SQLite with a fake API: a page with Text plugins in two placeholders is translated into two languages (fields, slug, markup, tone, plugins in the right placeholders, source untouched), skip and overwrite (no duplicated plugins), per-language errors (an unmapped language and an unsupported tone send nothing), the translate dialog as an editor (and 403 without the permission), the settings page (including the plugin version and its release link) and *Test connection*.
-- `tests/test_reporting.py`: the Commando Center with the fake (`tests/fake.py` answers `REPORT_URL` with 202): one `installed` report from the settings page (fields, `sdk_version`, callback URL, never the key), state stored by the SDK 0.1–0.2 reporter kept (no new report), the bundled versions, nothing when nothing changed, `upgraded`, reports off (setting and environment; ping 404, key still checked), ping answers (200/400/405), *Test connection* with a rejected key (links, `api_key_check`), a 401 during translation reported once, `supertext_check`'s `check` report, no site URL, center and database failures, the messages in four languages, *Not mapped* and the tone warning.
+- `tests/test_client.py`: the SDK wrapper: protocol, auth header and prefix, User-Agent with the version, 429 retries, errors (language pair included), clean-up, segments in one document, the review service client (`for_review`: all four calls to the review URL, created once, none without a separate URL, `REVIEW_URL` is Supertext's review service). `tests/fake.py` reads the SDK's multipart body back.
+- `tests/test_conf.py`: settings, language codes (exact codes, the SDK defaults, no guessing beyond them, the `LANGUAGES` mapping, the settings page's mapping and its override, sources), `REVIEW_URL` (default, `""`, `SUPERTEXT_REVIEW_URL`), *Translation review* per language (off by default, override wins) and the reporting setting.
+- `tests/test_translator.py`: end to end on SQLite with a fake API: a page with Text plugins in two placeholders is translated into two languages (fields, slug, markup, tone, plugins in the right placeholders, source untouched), skip and overwrite (no duplicated plugins), per-language errors (a language without mapping or default and an unsupported tone send nothing), a Supertext language chosen on the settings page, *Translation review* (a review language goes through the review service, all four calls, while the other goes directly; an empty `REVIEW_URL` turns it off; the checkbox saved on the settings page), the translate dialog as an editor (and 403 without the permission), the settings page (including the plugin version and its release link) and *Test connection*.
+- `tests/test_files.py`: XLIFF/HTML export and import end to end: reference round trip, the mapping and the fallback for unmapped codes, the collector's keys, HTML with one language only, nothing to export, `ok` written through the API write-back (fields, plugins, markup, log row), an existing language only with overwrite, `source_changed` only with the option, `untranslated`/`invalid_markup`/`missing` not written, errors per job (other system, unknown reference, deleted page, missing language, no permission), invalid files and the 10 MB limit, the dialog's export download and import summary, 403 without the permission.
+- `tests/test_reporting.py`: the Commando Center with the fake (`tests/fake.py` answers `REPORT_URL` with 202): one `installed` report from the settings page (fields, `sdk_version`, callback URL, never the key), state stored by the SDK 0.1–0.2 reporter kept (no new report), the bundled versions, nothing when nothing changed, `upgraded`, reports off (setting and environment; ping 404, key still checked), ping answers (200/400/405), *Test connection* with a rejected key (links, `api_key_check`), a 401 during translation reported once, `supertext_check`'s `check` report, no site URL, center and database failures, the messages in four languages, the Languages table (preselection: override, saved, suggestion, *— choose —*; saving, validation, override kept; option names in the admin's language) and the tone warning.
 - `tests/conftest.py`: every test runs against a `FakeSession` with `SUPERTEXT_REPORT_URL` pointing at the fake, so no test reaches the live API or the live center.
 - `tests/test_versioning.py` (`pytest --ds=tests.settings_versioning tests/test_versioning.py`, needs djangocms-versioning): new languages are drafts, published languages are not overwritten.
 
@@ -171,8 +187,8 @@ The public demo is a container built from `demo/Dockerfile`: django CMS 5.1 with
 | --- | --- |
 | `Dockerfile` | `python:3.13-slim`, the demo's requirements and this package (installed from the repository), `collectstatic` |
 | `entrypoint.sh` | Every start: creates the database if missing, `migrate`, `demo_setup`, then gunicorn on `$PORT` |
-| `demo/settings.py` | Settings from environment variables; PostgreSQL via `DATABASE_URL` (database name `DJANGOCMS_DB_NAME`); WhiteNoise; `CMS_PERMISSION = False`; Supertext with `en` mapped to `en-US` (the other demo codes are Supertext codes), formal tone for the three target languages and `SITE_URL` from `RAILWAY_PUBLIC_DOMAIN` |
-| `site_setup/` | The page template (`page.html` with a language chooser) and the `demo_setup` command |
+| `demo/settings.py` | Settings from environment variables; PostgreSQL via `DATABASE_URL` (database name `DJANGOCMS_DB_NAME`); WhiteNoise; `CMS_PERMISSION = False`; Supertext with `SITE_URL` from `RAILWAY_PUBLIC_DOMAIN` |
+| `site_setup/` | The page template (`page.html` with a language chooser) and the `demo_setup` command (also chooses `de-CH`, `fr-CH`, `it-CH` with the formal tone on the settings page for languages nobody has chosen yet; `en` uses the default `en-US`) |
 | `createdb.py` | Creates the demo database on the server from `DATABASE_URL` |
 | `.env.example` | The variables below |
 
@@ -187,7 +203,8 @@ The public demo is a container built from `demo/Dockerfile`: django CMS 5.1 with
 | `DEMO_ADMIN_EMAIL`, `DEMO_ADMIN_PASSWORD` | Superuser (the e-mail address is also the username) |
 | `DEMO_EDITOR_EMAIL`, `DEMO_EDITOR_PASSWORD` | Editor for automated tests and screenshots: staff user in the **Editors** group (pages, page contents, text plugins, *Can translate pages with Supertext*). django CMS has no built-in editor role, so `demo_setup` creates this group. |
 | `SUPERTEXT_API_KEY` | Supertext key |
-| `SUPERTEXT_API_URL` | Optional, e.g. a stand-in API |
+| `SUPERTEXT_API_URL` | Optional, e.g. a stand-in API (to try the review service, tick *Translation review* on the settings page instead) |
+| `SUPERTEXT_REVIEW_URL` | Optional: another review service than Supertext's (`REVIEW_URL`; empty keeps the default) |
 | `SUPERTEXT_VERSION_REPORTS` | Optional; `0` turns the version reports off (default on; the demo reports with `SITE_URL` = `https://$RAILWAY_PUBLIC_DOMAIN`) |
 | `SUPERTEXT_REPORT_URL` | Tests only: where reports go instead of the Commando Center (e.g. the stand-in's `/report`) |
 | `PORT` | Port gunicorn listens on (Railway sets it) |
@@ -208,7 +225,7 @@ docker run --rm -p 8000:8000 \
 
 ## Docs screenshots
 
-The images in `docs/images/` are generated by `tests/docs/screenshots.mjs` (Playwright) from a freshly set-up demo whose package talks to `tests/docs/stand-in.mjs`. The stand-in returns German, French and Italian for the demo's pages (`samples.json`, real Supertext output) and answers `POST /report` with 202, so screenshots never report to the live center (start Django with `SUPERTEXT_REPORT_URL=http://127.0.0.1:8765/report`). Regenerate them whenever a screen they show changes:
+The images in `docs/images/` are generated by `tests/docs/screenshots.mjs` (Playwright) from a freshly set-up demo whose package talks to `tests/docs/stand-in.mjs`. The stand-in returns German, French and Italian for the demo's pages (`samples.json`, real Supertext output) and answers `POST /report` with 202, so screenshots never report to the live center (start Django with `SUPERTEXT_REPORT_URL=http://127.0.0.1:8765/report`). It also exports the sample page as HTML into Italian, fills in the Italian from `samples.json` and imports the file (`09-export.png`, `10-import-summary.png`). Regenerate them whenever a screen they show changes:
 
 ```bash
 cd tests/docs && npm install && npx playwright install chromium
@@ -221,12 +238,41 @@ BASE_URL=http://127.0.0.1:8095 DEMO_ADMIN_EMAIL=… DEMO_ADMIN_PASSWORD=… \
 
 On the settings page the script shows the live API address and the public demo's domain (`SITE_DOMAIN`, also in the ping address) instead of the local ones. The stand-in's port can be changed with `PORT=…` (then adjust the URLs above).
 
+## Demo movie
+
+`docs/images/demo.gif` (at the top of the README) is recorded by `tests/docs/movie.mjs` with Supertext's shared movie kit (`tests/docs/movie/movie-kit.mjs` and `assets/`: intro and outro cards, caption bar, cursor, cuts the waiting time; Inter under the SIL OFL, `assets/fonts/Inter-LICENSE.txt`). It shows, with a spoken line for every step (the GIF is silent), as the demo's editor: the sample page in English in edit mode, the toolbar's *Language → Translate with Supertext…*, *Translate* for German, French and Italian (all ticked), the waiting state, the results and the German page via *Open*. Run it against a fresh demo (the page must have no translations yet) and the stand-in with a delay, so the waiting state is visible:
+
+```bash
+cd tests/docs && npm install && npx playwright install chromium
+pip install piper-tts                     # the voice (optional, see below)
+STAND_IN_DELAY=3 npm run stand-in &
+# a fresh demo as for the screenshots, served on :8095
+BASE_URL=http://127.0.0.1:8095 DEMO_EDITOR_EMAIL=… DEMO_EDITOR_PASSWORD=… npm run movie
+```
+
+`STAND_IN_DELAY=<seconds>` keeps the stand-in's files `in_progress` that long. The MP4 is narrated with [Piper](https://pypi.org/project/piper-tts/) (`pip install piper-tts`): the kit's `say()` speaks each step's line, shows its caption and holds until the line is finished; the time spent making the speech is cut. The voice model (63 MB, pinned revision, checked by SHA-256) downloads itself once into `tests/docs/movie/voice/` (git-ignored; never commit it). Without Piper, or with `MOVIE_VOICE=0`, the movie is made silent with the captions only.
+
+Voice: Piper voice “alba” (en_GB), trained on a dataset from the University of Edinburgh's Centre for Speech Technology Research, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+
+It needs `ffmpeg` and writes 1280×720 at 30 fps. The GIF (800 px, 12 fps, keep it under 3 MB) is committed; the MP4 isn't: it goes to `tests/docs/movie/out/djangoCMS-Supertext-Translation.mp4` (git-ignored) or to `MOVIE_OUT`. `CHROMIUM_PATH` picks a Chromium other than Playwright's. Record it again when the translate dialog or the toolbar entry changes. The kit is the same in every Supertext plugin repo: don't restyle it here.
+
+### Install movie
+
+`tests/docs/movie-install.mjs` records the install and configuration movie with the same kit and voice (MP4 only, no GIF). It shows the steps from `docs/INSTALLATION.md` in the kit's terminal (`pip install` from GitHub, `INSTALLED_APPS` and `LANGUAGES` in the settings, `migrate djangocms_supertext`, `SUPERTEXT_API_KEY` with the fake key `st-demo-0000-0000-0000` and `supertext_check`), then, as the demo's **administrator**: *Supertext translations → Settings and connection* (key set, where to get a key, *Test connection*), the Languages table (German → *German (Switzerland) (de-CH)*, *Translation review* left off, *Save languages*) and, for editors, the toolbar's *Language → Translate with Supertext…*. Page loads are cut, and the local addresses are shown as `https://api.supertext.com/v1/` and the public demo's domain (`SITE_DOMAIN`). Run it against the same demo and stand-in:
+
+```bash
+BASE_URL=http://127.0.0.1:8095 DEMO_ADMIN_EMAIL=… DEMO_ADMIN_PASSWORD=… npm run movie:install
+```
+
+The MP4 (about 90 s) goes to `tests/docs/movie/out/djangoCMS-Supertext-Translation-install.mp4` (git-ignored) or to `MOVIE_OUT`; it isn't committed. Record it again when the install steps or the settings page change.
+
 ## Code quality and security checks
 
 - **Checks** workflow (`.github/workflows/checks.yml`): [actionlint](https://github.com/rhysd/actionlint) and [zizmor](https://docs.zizmor.sh/) lint the workflows on every push and pull request. Dependency review fails a pull request that adds a package with a known vulnerability (moderate or worse). Actions are pinned to commit SHAs; Dependabot keeps the pins up to date. To run the workflow lint locally: `pip install actionlint-py zizmor`, then `actionlint` and `zizmor .github/workflows` in the repo root.
 - **Links** workflow (`.github/workflows/links.yml`): [lychee](https://lychee.cli.rs/) checks the links in all Markdown files weekly and whenever docs change on `main`. Broken links open (or update) the issue "Broken links in the docs". Links that can't work from CI (local URLs, placeholders, pages behind a login) are excluded in `.lycheeignore`.
 - Python and the demo's JavaScript are analysed by CodeQL (see below), so this repo runs no separate static analyser.
 - GitHub settings (set by Remy's setup script, not stored in the repo): **secret scanning with push protection** (a push containing a known token format is rejected; findings under *Security → Secret scanning*) and **CodeQL default setup** (findings under *Security → Code scanning* and as comments on pull requests; PHP isn't covered by CodeQL, which is why the PHP plugins run PHPStan).
+- `.github/workflows/support-triage.yml`: support requests from the Supertext integrations website arrive as issues labelled `support` (contact details stay in the Supertext CMS). Claude classifies each one: answers questions (marked `<!-- supertext:reply -->`, emailed to the sender by the CMS) and closes them, fixes bugs as pull requests for review (never merged automatically), labels feature requests `feature-request`. Only people with triage rights can add labels, so outsiders can't start it. Needs the organisation secret `ANTHROPIC_API_KEY`; the workflow is the same in every Supertext repo.
 
 Before starting work in this repo, look at its open findings: code scanning alerts, secret scanning alerts, Dependabot PRs and the "Broken links in the docs" issue.
 
@@ -255,6 +301,8 @@ Publishing to PyPI (`python -m build && twine upload dist/*`) is planned.
 - Existing languages keep their slug when overwritten.
 - Static placeholders/aliases (djangocms-alias) and apphook content are not translated.
 - With djangocms-versioning, only drafts can be overwritten.
-- Settings live in Django's settings file, so there's no settings form with a select of Supertext languages, and version reports have no `settings_saved` event (the key check runs on a changed key instead).
+- Re-translating (overwrite) replaces manual changes in the translated texts; no change detection. A translation memory and reviewers' corrections come from the review service when a language has *Translation review* on; corrections reach django CMS only with the next translation (no push).
+- Settings other than the Languages table (Supertext language, form of address, *Translation review*) live in Django's settings file, and version reports have no `settings_saved` event (the key check runs on a changed key instead).
+- *Export for translation* exports one page at a time (XLIFF can hold several languages); a bulk export of a page tree into one XLIFF file would be the next step.
 - Not on PyPI yet.
 - Human (professional) translation orders are not supported yet (the WordPress plugin has them).

@@ -5,6 +5,8 @@ accounts or content):
 - the DEMO_ADMIN_* (superuser) and DEMO_EDITOR_* (Editors group) accounts
 - the Editors group: pages, page contents and text plugins in every language, Supertext
 - an English home page and the sample article "Swiss chocolate, shipped worldwide"
+- the Supertext languages of the target languages (de-CH, fr-CH, it-CH, formal) on the settings page,
+  for languages nobody has chosen yet (English uses the SDK's default en-US)
 
 Passwords are never printed; only variable names.
 """
@@ -49,9 +51,18 @@ class Command(BaseCommand):
         group = self.ensure_editors_group()
         self.ensure_accounts(group)
         self.ensure_pages()
+        self.ensure_supertext_languages()
 
     def log(self, message):
         self.stdout.write(f"[demo] {message}")
+
+    def ensure_supertext_languages(self):
+        from djangocms_supertext.models import LanguageSetting
+
+        for language, code in (("de-ch", "de-CH"), ("fr-ch", "fr-CH"), ("it-ch", "it-CH")):
+            _, created = LanguageSetting.objects.get_or_create(language=language, defaults={"supertext_code": code, "politeness": "more"})
+            if created:
+                self.log(f"Supertext language for {language}: {code}, formal")
 
     def ensure_site(self):
         domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "localhost:8000"

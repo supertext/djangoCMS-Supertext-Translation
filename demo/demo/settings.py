@@ -127,14 +127,10 @@ STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
-# Supertext. The key comes from SUPERTEXT_API_KEY (and SUPERTEXT_API_URL, if set).
+# Supertext. The key comes from SUPERTEXT_API_KEY (and SUPERTEXT_API_URL, if set). The Supertext
+# languages are chosen on the settings page (demo_setup preselects a formal tone for the targets;
+# en uses the SDK's default en-US), so LANGUAGES isn't set here.
 SUPERTEXT = {
-    "LANGUAGES": {
-        "en": {"code": "en-US"},  # "en" isn't a Supertext target code (en-US or en-GB)
-        "de-ch": {"politeness": "more"},
-        "fr-ch": {"politeness": "more"},
-        "it-ch": {"politeness": "more"},
-    },
     # Version reports: the public address (SUPERTEXT_VERSION_REPORTS=0 turns them off).
     "SITE_URL": "https://" + os.environ["RAILWAY_PUBLIC_DOMAIN"] if os.environ.get("RAILWAY_PUBLIC_DOMAIN") else "",
 }

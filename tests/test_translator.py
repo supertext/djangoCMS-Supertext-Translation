@@ -96,12 +96,63 @@ def test_errors_are_reported_per_language(page):
 
 
 def test_unmapped_language_is_not_sent(page, session):
-    # "it" is not a Supertext code (it-IT or it-CH): reported for that language, nothing sent for it.
+    # "en-ie" has no Supertext code and no default (en-GB? en-US?): reported for that language, nothing sent for it.
     client = options().client(session=session, sleep=lambda s: None)
-    results = translator.translate_page(page, "en", ["it", "fr-ch"], options=options(), client=client)
-    assert [(r.language, r.status, r.code) for r in results] == [("it", "error", "unsupported_language"), ("fr-ch", "translated", "")]
-    assert "The language it has no Supertext language yet" in results[0].message
+    results = translator.translate_page(page, "en", ["en-ie", "fr-ch"], options=options(), client=client)
+    assert [(r.language, r.status, r.code) for r in results] == [("en-ie", "error", "unsupported_language"), ("fr-ch", "translated", "")]
+    assert "The language en-ie has no Supertext language yet" in results[0].message
+    assert "Settings and connection → Languages" in results[0].message
     assert [c["data"]["target_lang"] for c in session.calls if c["method"] == "POST"] == ["fr-CH"]
+
+
+def test_language_chosen_on_the_settings_page_is_used(page, session):
+    from djangocms_supertext.models import LanguageSetting
+
+    LanguageSetting.objects.create(language="fr-ch", supertext_code="fr-FR", politeness="more")
+    opts = options()
+    results = translator.translate_page(page, "en", ["fr-ch"], options=opts, client=opts.client(session=session, sleep=lambda s: None))
+    assert results[0].status == "translated"
+    posts = [c["data"] for c in session.calls if c["method"] == "POST"]
+    assert [(d["target_lang"], d.get("politeness")) for d in posts] == [("fr-FR", "more")]
+
+
+def test_translation_review_language_goes_through_the_review_service(page, session):
+    from djangocms_supertext.models import LanguageSetting
+
+    LanguageSetting.objects.create(language="de-ch", review=True)
+    opts = conf.load({"API_KEY": "test-key", "API_URL": "https://api.test/v1/", "REVIEW_URL": "https://review.test/v1/", "POLL_INTERVAL": 0})
+    results = translator.translate_page(page, "en", ["de-ch", "fr-ch"], options=opts, client=opts.client(session=session, sleep=lambda s: None))
+    assert [r.status for r in results] == ["translated", "translated"]
+    by_host = [(c["method"], c["url"].split("/v1/")[0], c["url"].split("/v1/")[1]) for c in session.calls]
+    review = [(m, p) for m, host, p in by_host if host == "https://review.test"]
+    direct = [(m, p) for m, host, p in by_host if host == "https://api.test"]
+    assert [m for m, _ in review] == ["POST", "GET", "GET", "DELETE"] and [m for m, _ in direct] == ["POST", "GET", "GET", "DELETE"]
+    assert review[1][1].endswith("/status") and review[2][1].endswith("/translation")
+    posts = {c["url"].split("/v1/")[0]: c["data"]["target_lang"] for c in session.calls if c["method"] == "POST"}
+    assert posts == {"https://review.test": "de-CH", "https://api.test": "fr-CH"}
+
+
+def test_empty_review_url_turns_review_off(page, session):
+    from djangocms_supertext.models import LanguageSetting
+
+    LanguageSetting.objects.create(language="de-ch", review=True)
+    opts = conf.load({"API_KEY": "test-key", "API_URL": "https://api.test/v1/", "REVIEW_URL": "", "POLL_INTERVAL": 0})
+    translator.translate_page(page, "en", ["de-ch"], options=opts, client=opts.client(session=session, sleep=lambda s: None))
+    assert session.calls and all(c["url"].startswith("https://api.test/v1/") for c in session.calls)
+
+
+def test_settings_page_saves_translation_review(session, client):
+    from djangocms_supertext.models import LanguageSetting
+
+    client.force_login(User.objects.create_superuser("admin", "admin@example.com", "pw-123456789"))
+    url = reverse("admin:djangocms_supertext_settings")
+    response = client.get(url)
+    assert b'name="review-de-ch"' in response.content and b"Translation review" in response.content
+    client.post(url, {"action": "languages", "target-de-ch": "de-CH", "review-de-ch": "1"})
+    assert LanguageSetting.objects.get(language="de-ch").review is True
+    assert LanguageSetting.objects.get(language="fr-ch").review is False
+    response = client.get(url)
+    assert b'name="review-de-ch" value="1" data-supertext-review checked' in response.content
 
 
 def test_politeness_without_support_is_reported(page, session):

@@ -34,6 +34,12 @@ ENVIRONMENTS = {
     "staging": "https://api.staging.supertext.com/v1/",
     "testing": "https://api.testing.supertext.com/v1/",
 }
+#: Supertext's review service (translation proxy of Supertext Localization Review). It speaks the
+#: same API v1 and forwards to the live Supertext API with the plugin's key, keeping every
+#: translation so reviewers can correct them on the website. Used for languages with *Translation review* on.
+REVIEW_URL = "https://localizationreview-production.up.railway.app/v1/"
+#: The plugin's name in the User-Agent and in version reports (the repository's name).
+PLUGIN_NAME = "djangoCMS-Supertext-Translation"
 SIGNUP_URL = "https://www.supertext.com/person/en/account/signin"
 #: supertext.com → Integrations → API (requires the Admin role).
 API_KEY_URL = "https://www.supertext.com/en/integrations/api"
@@ -63,15 +69,16 @@ MESSAGES: dict[str, str] = {
         "Generate a new API key at %(api_key_url)s (requires the Admin role)."
     ),
     ErrorCode.INVALID_LANGUAGE_PAIR: gettext_noop(
-        "Supertext does not support this language pair (%(source)s → %(target)s). Check the language codes in the LANGUAGES option."
+        "Supertext does not support this language pair (%(source)s → %(target)s). Check the Supertext languages "
+        "under Supertext → Supertext translations → Settings and connection → Languages."
     ),
     ErrorCode.UNSUPPORTED_LANGUAGE: gettext_noop(
-        "The language %(language)s has no Supertext language yet. Ask your administrator to map it "
-        "(code under LANGUAGES in the SUPERTEXT setting, e.g. de-CH)."
+        "The language %(language)s has no Supertext language yet. Ask your administrator to choose one "
+        "under Supertext → Supertext translations → Settings and connection → Languages."
     ),
     ErrorCode.UNSUPPORTED_FEATURE: gettext_noop(
         "Supertext offers no formal or informal tone for this language (%(target)s). "
-        "Set its form of address to the default (politeness under LANGUAGES in the SUPERTEXT setting)."
+        "Set its form of address to the default under Supertext → Supertext translations → Settings and connection → Languages."
     ),
     ErrorCode.NOT_FOUND: gettext_noop("The requested Supertext resource was not found."),
     ErrorCode.PAYLOAD_TOO_LARGE: gettext_noop("The content is too large for Supertext to translate in one go."),
@@ -163,13 +170,19 @@ class SupertextClient:
         request_timeout: float = 30,
         session: requests.Session | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        review_url: str = "",
     ):
         from . import __version__
 
         self.api_key = normalize_key(api_key)
         self.base_url = (base_url or LIVE).rstrip("/") + "/"
-        self.user_agent = f"djangocms-supertext-translation/{__version__}"
+        # The plugin's version too, so Supertext and the review service see which release calls.
+        self.user_agent = f"{PLUGIN_NAME}/{__version__}"
         self.transport = RequestsTransport(session or requests.Session())
+        review_url = (review_url or "").strip()
+        self.review_url = review_url.rstrip("/") + "/" if review_url and review_url.rstrip("/") != self.base_url.rstrip("/") else ""
+        self._review_client: SupertextClient | None = None
+        self._settings = {"poll_timeout": poll_timeout, "poll_interval": poll_interval, "request_timeout": request_timeout, "sleep": sleep}
         self.sdk = sdk.SupertextClient(
             self.api_key,
             base_url=self.base_url,
@@ -184,6 +197,17 @@ class SupertextClient:
     @property
     def has_api_key(self) -> bool:
         return bool(self.api_key)
+
+    def for_review(self, review: bool) -> SupertextClient:
+        """The client for a target language: the review service when its *Translation review* is on
+        (same key, timeouts, session and User-Agent; created once), else this one. Without a review
+        URL (``""`` or the same as the API's), always this one. Each document is uploaded, polled,
+        downloaded and deleted by the client that submitted it."""
+        if not review or not self.review_url:
+            return self
+        if self._review_client is None:
+            self._review_client = SupertextClient(self.api_key, self.review_url, session=self.transport.session, **self._settings)
+        return self._review_client
 
     def translate_document(self, html: str, target_language: str, source_language: str = "", politeness: str = "default") -> str:
         """Translates a complete HTML document and returns the translated HTML.

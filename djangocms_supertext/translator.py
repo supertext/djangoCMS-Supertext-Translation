@@ -47,6 +47,12 @@ class _Unit:
     kind: str  # text | html
     value: str
     plugin: int | None = None
+    plugin_pk: int | None = None
+
+    @property
+    def key(self) -> str:
+        """Stable key for translation files: ``page.title``, ``plugin.12.body`` (the source plugin's pk)."""
+        return f"page.{self.field}" if self.plugin is None else f"plugin.{self.plugin_pk}.{self.field}"
 
 
 @dataclass
@@ -128,7 +134,8 @@ def translate_page(page, source_language: str, targets: list[str], overwrite: bo
         try:
             if existing is not None:
                 _check_editable(existing)
-            translated = _translate(client, source.units, source_language, target, options)
+            # Translation review: languages with it on go through the review service (same protocol).
+            translated = _translate(client.for_review(options.review(target)), source.units, source_language, target, options)
             with transaction.atomic():
                 created = _apply(page, source, translated, target, existing, user)
             results.append(Result(target, Translation.STATUS_TRANSLATED, created=created))
@@ -144,6 +151,26 @@ def translate_page(page, source_language: str, targets: list[str], overwrite: bo
         for r in results
     ])
     return results
+
+
+def collect(page, language: str, options: conf.Options) -> _Source | None:
+    """The page's texts in ``language`` (page fields and plugin fields), or None when the page has
+    no content in it. The API translation and the translation files use the same units."""
+    return _collect(page, language, options)
+
+
+def apply(page, source: _Source, translated: dict[int, str], language: str, user=None, overwrite: bool = False) -> bool:
+    """Writes translations (unit index → text) into ``language`` exactly as an API translation does:
+    creates the language, or with ``overwrite`` replaces it (only drafts with djangocms-versioning).
+    Raises :class:`SupertextError` for a language that exists without ``overwrite``. Returns whether
+    the language was created."""
+    existing = page_content(page, language)
+    if existing is not None and not overwrite:
+        raise SupertextError(_("Already translated."))
+    if existing is not None:
+        _check_editable(existing)
+    with transaction.atomic():
+        return _apply(page, source, translated, language, existing, user)
 
 
 def _collect(page, language: str, options: conf.Options) -> _Source | None:
@@ -166,7 +193,7 @@ def _collect(page, language: str, options: conf.Options) -> _Source | None:
             for name, kind in options.plugin_fields.get(plugin.plugin_type, {}).items():
                 value = getattr(plugin, name, None)
                 if isinstance(value, str) and value.strip():
-                    source.units.append(_Unit(name, "html" if kind == "html" else "text", value.strip(), plugin=index))
+                    source.units.append(_Unit(name, "html" if kind == "html" else "text", value.strip(), plugin=index, plugin_pk=plugin.pk))
             plugin._supertext_index = index
             index += 1
     return source

@@ -10,6 +10,7 @@ def no_live_services(monkeypatch):
     monkeypatch.setenv("SUPERTEXT_REPORT_URL", REPORT_URL)
     monkeypatch.delenv("SUPERTEXT_VERSION_REPORTS", raising=False)
     monkeypatch.delenv("SUPERTEXT_API_KEY", raising=False)
+    monkeypatch.delenv("SUPERTEXT_REVIEW_URL", raising=False)
     fake = FakeSession()
     monkeypatch.setattr("djangocms_supertext.client.requests.Session", lambda: fake)
     return fake

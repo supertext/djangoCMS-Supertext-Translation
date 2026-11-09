@@ -47,3 +47,37 @@ class State(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class LanguageSetting(models.Model):
+    """The Supertext language (and form of address) of one django CMS language, chosen on the
+    Supertext settings page or in the Django admin. One mapping serves both directions. A code under
+    ``LANGUAGES`` in the ``SUPERTEXT`` setting overrides it. ``review``: *Translation review* for
+    translations into this language (through the review service)."""
+
+    POLITENESS_CHOICES = [
+        ("default", _("Default")),
+        ("more", _("Formal (Sie, vous)")),
+        ("less", _("Informal (du, tu)")),
+    ]
+
+    language = models.CharField(_("django CMS language"), max_length=15, unique=True)
+    supertext_code = models.CharField(_("Supertext language"), max_length=32, blank=True)
+    politeness = models.CharField(_("form of address"), max_length=10, choices=POLITENESS_CHOICES, default="default")
+    review = models.BooleanField(
+        _("Translation review"),
+        default=False,
+        help_text=_(
+            "Translations into this language go through Supertext's review service, so reviewers can check and "
+            "correct them on the website with the Supertext Localization Review extension. Their corrections are "
+            "used the next time the page is translated."
+        ),
+    )
+
+    class Meta:
+        verbose_name = _("Supertext language")
+        verbose_name_plural = _("Supertext languages")
+        ordering = ["language"]
+
+    def __str__(self):
+        return f"{self.language} → {self.supertext_code or '—'}"
