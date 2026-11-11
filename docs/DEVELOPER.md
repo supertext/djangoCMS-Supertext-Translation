@@ -149,7 +149,7 @@ pytest
 
 CI (`.github/workflows/ci.yml`) on every push and pull request:
 
-- **test**: the suite on Python 3.11 with django CMS 5.0 LTS and Django 5.2, 3.12 with django CMS 5.1 and Django 5.2, 3.13 with django CMS 5.1 and Django 6 (plus the versioning test), and 3.14 with django CMS 5.1 and Django 6.
+- **test**: the suite on Python 3.11 with django CMS 5.0 LTS and Django 5.2, 3.12 with django CMS 5.1 and Django 5.2, 3.13 with django CMS 5.1 and Django 6 (plus the versioning test), 3.14 with django CMS 5.1 and Django 6, and 3.15 with django CMS 5.1 and Django 6.1.
 - **demo**: builds the demo image, starts it twice against PostgreSQL with the stand-in (`tests/demo-check.sh`): demo accounts created once and never duplicated, no passwords in the log, the editor's permissions, `supertext_check`, the public ping and the `installed` and `check` reports the stand-in received (`GET /reports`; never the key), translation of the sample page into three languages, the skip on a second run, and the German and French pages with their translated slugs and markup.
 
 `.github/workflows/e2e.yml` runs the end-to-end test against the real Supertext API and regenerates the docs screenshots (see *End-to-end tests*); `checks.yml` and `links.yml` lint the workflows and check the links (see *Code quality and security checks*).
@@ -185,7 +185,7 @@ The public demo is a container built from `demo/Dockerfile`: django CMS 5.1 with
 
 | File | Purpose |
 | --- | --- |
-| `Dockerfile` | `python:3.14-slim`, the demo's requirements and this package (installed from the repository), `collectstatic` |
+| `Dockerfile` | `python:3.15-slim`, the demo's requirements and this package (installed from the repository), `collectstatic` |
 | `entrypoint.sh` | Every start: creates the database if missing, `migrate`, `demo_setup`, then gunicorn on `$PORT` |
 | `demo/settings.py` | Settings from environment variables; PostgreSQL via `DATABASE_URL` (database name `DJANGOCMS_DB_NAME`); WhiteNoise; `CMS_PERMISSION = False`; Supertext with `SITE_URL` from `RAILWAY_PUBLIC_DOMAIN` |
 | `site_setup/` | The page template (`page.html` with a language chooser) and the `demo_setup` command (also chooses `de-CH`, `fr-CH`, `it-CH` with the formal tone on the settings page for languages nobody has chosen yet; `en` uses the default `en-US`) |

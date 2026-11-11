@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## Unreleased
 
+- Added: support for Python 3.15; CI tests it with django CMS 5.1 and Django 6.1.
+- Changed: the demo runs on Python 3.15 and gunicorn 27.0.0.
+
 ## 1.0.0 — 2026-11-09
 
 First stable release. Every plugin release is now tested end to end against the live Supertext API (`.github/workflows/e2e.yml`).
