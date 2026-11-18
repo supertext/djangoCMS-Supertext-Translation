@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ## Unreleased
 
 - Added: support for Python 3.15; CI tests it with django CMS 5.1 and Django 6.1.
-- Changed: the demo runs on Python 3.15 and gunicorn 27.0.0.
+- Changed: the demo runs on Python 3.15, gunicorn 27.0.1 and psycopg 3.3.9.
 
 ## 1.0.0 — 2026-11-09
 
