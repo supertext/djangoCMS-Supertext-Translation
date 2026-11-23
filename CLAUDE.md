@@ -95,3 +95,7 @@ Commando Center (version reports, API key check, ping): `djangocms_supertext/rep
 - Model changes need a migration in `djangocms_supertext/migrations` committed with the change.
 - End-to-end tests against the real Supertext API: `.github/workflows/e2e.yml` with `tests/e2e/` (see "End-to-end tests" in `docs/DEVELOPER.md`). The key is only the GitHub secret `SUPERTEXT_API_KEY`, set by Remy; sessions don't use a live key. Behaviour changes need matching checks in `tests/e2e/live.mjs`.
 - `demo/` is the Railway demo (`railway.json` → `demo/Dockerfile`, context = repo root). Demo-only setup is `demo/site_setup/management/commands/demo_setup.py`; it only creates what's missing. Demo secrets live only in Railway variables.
+
+## Live E2E runs share one API key (always)
+
+Every push to `main` that touches the plugin, the demo or the tests starts the live E2E run, and all Supertext plugin repos share one Supertext API key, which is rate-limited per second. When the same kind of change goes to several repos, push them one repo at a time, at least 3 minutes apart (a loop with `sleep 180`), never in parallel. Docs-only changes (`docs/`, `README.md`, `CHANGELOG.md`, `CLAUDE.md`) don't start it and can go together. A live run that failed with `RATE_LIMIT_EXCEEDED` collided with another repo's run, it isn't a bug: rerun it on its own.
