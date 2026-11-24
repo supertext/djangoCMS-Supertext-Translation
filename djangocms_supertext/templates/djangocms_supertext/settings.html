@@ -38,7 +38,13 @@
     </td></tr>
     {% if reports_enabled and ping_url %}<tr><th>{% translate "Ping address" %}</th><td><code data-supertext-ping>{{ ping_url }}</code></td></tr>{% endif %}
   </table>
-  <p class="help" style="margin-bottom: 28px">{% translate "Sends the site URL and the versions of this plugin, django CMS and the runtime to Supertext after an update and when the API key changes, so Supertext support can see which version you run. No content, no API key and no personal data are sent. Turn it off with VERSION_REPORTS: False in the SUPERTEXT setting or SUPERTEXT_VERSION_REPORTS=0." %}</p>
+  <p class="help">{% translate "Sends the site URL and the versions of this plugin, django CMS and the runtime to Supertext after an update and when the API key changes, so Supertext support can see which version you run. No content, no API key and no personal data are sent. Turn it off with VERSION_REPORTS: False in the SUPERTEXT setting or SUPERTEXT_VERSION_REPORTS=0." %}</p>
+  <form method="post" style="margin: 12px 0 28px" data-supertext-send-configuration>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="configuration">
+    <input type="submit" value="{% translate 'Send configuration to Supertext' %}">
+    <span class="help">{% translate "Sends Supertext the Django apps installed here (name, version; Django's and django CMS's own are left out) and the Supertext language of each django CMS language, so Supertext support can help better. Nothing else is sent." %}</span>
+  </form>
 
   <h2 data-supertext-languages-heading>{% translate "Languages" %}</h2>
   <p class="help">{% translate "Choose the Supertext language for each django CMS language. It is used in both directions: to translate into the language and from it. A suggestion is preselected where Supertext has an obvious one (de → German (Germany), en → English (US), es-es → Spanish); choose another one if your site means something else (e.g. de-CH for Swiss German)." %}</p>

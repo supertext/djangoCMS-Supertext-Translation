@@ -114,7 +114,7 @@ def last_check() -> KeyCheck | None:
         return None
 
 
-def reporter(options: conf.Options, url: str | None) -> InstallationReporter:
+def reporter(options: conf.Options, url: str | None, languages: list[dict] | None = None) -> InstallationReporter:
     """The Plugin Health reporter. Without a site URL it only checks the key (reports need the URL).
 
     Reports and key checks go through the plugin's ``requests`` transport (proxies, certificates); the
@@ -139,6 +139,8 @@ def reporter(options: conf.Options, url: str | None) -> InstallationReporter:
         "transport": send,
         "key_checker": CallableKeyChecker(check=check, fingerprint=sdk.api_key_fingerprint),
     }
+    if languages is not None:
+        kwargs["languages"] = lambda: languages
     kwargs.update(REPORTER_OVERRIDES)
     return InstallationReporter(**kwargs)
 
@@ -173,6 +175,53 @@ def run(action: str, options: conf.Options | None = None, request=None, http_sta
     except Exception as error:  # noqa: BLE001 - reporting never breaks the admin
         logger.debug("[supertext] version report skipped: %s", error)
         return None
+
+
+# Django and django CMS themselves (and what django CMS needs): not sent by send_configuration().
+CORE_APPS = ("django", "cms", "menus", "treebeard", "sekizai", "classytags", "djangocms_admin_style", "djangocms_supertext")
+
+
+def installed_apps() -> list[dict]:
+    """The installed Django apps that aren't Django's or django CMS's own, as the Python distributions
+    that ship them (name and version), once each."""
+    from importlib import metadata
+
+    from django.apps import apps
+
+    try:
+        distributions = metadata.packages_distributions()
+    except Exception:  # noqa: BLE001
+        distributions = {}
+    seen: dict[str, dict] = {}
+    for app in apps.get_app_configs():
+        top = app.name.split(".")[0]
+        if top in CORE_APPS:
+            continue
+        name = (distributions.get(top) or [top])[0]
+        try:
+            version = metadata.version(name)
+        except Exception:  # noqa: BLE001 - an app from the project itself
+            version = None
+        seen.setdefault(name.lower(), {"name": name, "version": version, "active": True, "type": "app"})
+    return sorted(seen.values(), key=lambda e: e["name"].lower())
+
+
+def send_configuration(languages: list[str], options: conf.Options | None = None, request=None) -> dict | None:
+    """"Send configuration to Supertext" (settings page): the installed apps and every django CMS language
+    with its Supertext code in one ``extensions`` report, sent now (also within the hour after a failed
+    report). None with version reports off. Never raises."""
+    try:
+        options = options or conf.load()
+        if not options.reports_enabled:
+            return None
+        mapping = [{"code": code, "supertext": options.target_code_or_none(code)} for code in languages]
+        extensions = installed_apps()
+        result = reporter(options, site_url(options, request), mapping).send_extensions(load_state(), extensions)
+        save_state(result.state)
+        return {"sent": result.sent, "extensions": len(extensions), "languages": len(mapping)}
+    except Exception as error:  # noqa: BLE001 - reporting never breaks the admin
+        logger.debug("[supertext] configuration not sent: %s", error)
+        return {"sent": False, "extensions": 0, "languages": 0}
 
 
 def after_response(response, task: Callable[[], object]) -> None:

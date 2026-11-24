@@ -388,6 +388,15 @@ class TranslationAdmin(admin.ModelAdmin):
                 messages.success(request, _("The Supertext languages were saved."))
                 return redirect("admin:djangocms_supertext_settings")
             options = conf.load()
+        elif request.method == "POST" and request.POST.get("action") == "configuration":
+            sent = reporting.send_configuration([lang["code"] for lang in languages], options, request)
+            if sent is None:
+                messages.warning(request, _("Version information is off (VERSION_REPORTS or SUPERTEXT_VERSION_REPORTS): nothing was sent."))
+            elif sent["sent"]:
+                messages.success(request, _("Sent: %(extensions)s apps, %(languages)s languages.") % {"extensions": sent["extensions"], "languages": sent["languages"]})
+            else:
+                messages.error(request, _("The configuration couldn't be sent. Try again later."))
+            return redirect("admin:djangocms_supertext_settings")
         elif request.method == "POST":
             # Test connection: the SDK's key check (ok, invalid, missing, unreachable, error), stored and reported.
             result = reporting.run("test_connection", options, request)

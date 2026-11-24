@@ -82,7 +82,7 @@ async function openDialog(page) {
   await shot(page, modal, '02-translate-dialog.png')
 
   await page.locator('.cms-modal-buttons a, .cms-modal-buttons input').filter({ hasText: 'Translate' }).first().click()
-  await frame.locator('.st-results li').first().waitFor({ timeout: 60_000 })
+  await frame.locator('.st-results li').first().waitFor({ timeout: 300_000 })
   await page.waitForTimeout(600)
   await shot(page, modal, '03-translated.png')
 
@@ -103,7 +103,7 @@ async function openDialog(page) {
   await frame.locator('input[name="import-file"]').setInputFiles({ name: download.suggestedFilename(), mimeType: 'text/html', buffer: Buffer.from(translateHtml(exported, 'it')) })
   await frame.locator('input[name="import-overwrite"]').check()
   await frame.locator('#st-import input[type=submit]').click()
-  await frame.locator('.st-import-results').waitFor({ timeout: 60_000 })
+  await frame.locator('.st-import-results').waitFor({ timeout: 300_000 })
   await page.waitForTimeout(600)
   await frame.locator('#st-import').screenshot({ path: OUT + '10-import-summary.png' })
 

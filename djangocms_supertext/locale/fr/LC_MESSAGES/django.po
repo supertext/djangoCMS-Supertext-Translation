@@ -538,3 +538,30 @@ msgstr "Service de révision"
 
 msgid "Off (REVIEW_URL is empty)"
 msgstr "Désactivé (REVIEW_URL est vide)"
+
+msgid "Send configuration to Supertext"
+msgstr "Envoyer la configuration à Supertext"
+
+msgid ""
+"Sends Supertext the Django apps installed here (name, version; Django's and "
+"django CMS's own are left out) and the Supertext language of each django CMS"
+" language, so Supertext support can help better. Nothing else is sent."
+msgstr ""
+"Envoie à Supertext les applications Django installées ici (nom, version ; "
+"sans celles de Django et de django CMS) et la langue Supertext de chaque "
+"langue de django CMS, afin que le support Supertext puisse mieux vous aider."
+" Rien d’autre n’est envoyé."
+
+msgid ""
+"Version information is off (VERSION_REPORTS or SUPERTEXT_VERSION_REPORTS): "
+"nothing was sent."
+msgstr ""
+"Les informations de version sont désactivées (VERSION_REPORTS ou "
+"SUPERTEXT_VERSION_REPORTS) : rien n’a été envoyé."
+
+#, python-format
+msgid "Sent: %(extensions)s apps, %(languages)s languages."
+msgstr "Envoyé : %(extensions)s applications, %(languages)s langues."
+
+msgid "The configuration couldn't be sent. Try again later."
+msgstr "La configuration n’a pas pu être envoyée. Réessayez plus tard."

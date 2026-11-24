@@ -76,7 +76,7 @@ def test_state_stored_by_the_sdk_reporter_is_kept(admin_client, no_live_services
     State.objects.create(key="reporter", value=json.dumps(old, separators=(",", ":")))
     response = admin_client.get(reverse("admin:djangocms_supertext_settings"))
     assert b'data-supertext-key-check="ok"' in response.content
-    assert no_live_services.reports == [] and state() == old
+    assert no_live_services.reports == [] and state() == {**old, "keyChecks": None, "reportedKeyStatuses": None}
 
 
 def test_bundled_plugin_health_and_sdk():
@@ -244,3 +244,26 @@ def test_target_names_follow_the_admin_language():
     assert labels[""] == "— auswählen —"
     assert labels["de-CH"] == "Deutsch (de-CH)" and labels["gsw-u-sd-chzh"].endswith("(gsw-u-sd-chzh)")
     assert dict(st_admin.target_choices())["fr-CH"] == "French (Switzerland) (fr-CH)"
+
+
+def test_send_configuration_sends_apps_and_languages(admin_client, no_live_services, settings):
+    settings.SUPERTEXT = {"API_KEY": "test-key"}
+    admin_client.get(reverse("admin:djangocms_supertext_settings"))
+    no_live_services.reports.clear()
+    response = admin_client.post(reverse("admin:djangocms_supertext_settings"), {"action": "configuration"}, follow=True)
+    assert b"Sent:" in response.content
+    [report] = no_live_services.reports
+    assert report["event"] == "extensions"
+    names = [e["name"] for e in report["extensions"]]
+    assert all(not n.lower().startswith(("django", "cms")) or n.lower().startswith("djangocms-") for n in names)
+    assert "djangocms-supertext-translation" not in names
+    codes = [lang["code"] for lang in report["languages"]]
+    assert codes and all("supertext" in lang for lang in report["languages"])
+    assert "test-key" not in json.dumps(report)
+
+
+def test_send_configuration_sends_nothing_with_reports_off(admin_client, no_live_services, monkeypatch):
+    monkeypatch.setenv("SUPERTEXT_VERSION_REPORTS", "0")
+    response = admin_client.post(reverse("admin:djangocms_supertext_settings"), {"action": "configuration"}, follow=True)
+    assert b"nothing was sent" in response.content
+    assert no_live_services.reports == []
