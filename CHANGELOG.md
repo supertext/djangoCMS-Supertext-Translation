@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Changed: the docs screenshots show real Supertext translations: CI takes them with the live API (secret `SUPERTEXT_API_KEY`); the stand-in API translates only without the key. Version reports still go to the stand-in.
 - Added: support for Python 3.15; CI tests it with django CMS 5.1 and Django 6.1.
 - Changed: the demo runs on Python 3.15, gunicorn 27.0.1 and psycopg 3.3.9.
+- Changed: the demo runs djangocms-text 1.1.0 (was 1.0.2); CI and the end-to-end tests use PostgreSQL 19 (was 18).
 
 ## 1.0.0 — 2026-11-09
 
