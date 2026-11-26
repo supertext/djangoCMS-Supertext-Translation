@@ -102,7 +102,7 @@ Supertext accepts exactly these target codes (from its `features` list, October 
 | German, English, French, Italian, Portuguese | `de-DE`, `de-CH`, `de-AT`, `en-US`, `en-GB`, `fr-FR`, `fr-CH`, `it-IT`, `it-CH`, `pt-PT`, `pt-BR` |
 | Chinese, Serbian | `zh-Hans`, `zh-Hant`, `sr-Latn`, `sr-Cyrl` |
 | Swiss German | `gsw-u-sd-chzh` (Zurich), `gsw-u-sd-chbe` (Bern) |
-| All others, without region | `bg`, `cs`, `da`, `el`, `es`, `fi`, `hr`, `hu`, `ja`, `ko`, `nb`, `nl`, `pl`, `rm`, `ru`, `sk`, `sl`, `sq`, `sv`, `tr` |
+| All others, without region | `bg`, `cs`, `da`, `el`, `es`, `fi`, `hr`, `hu`, `id`, `ja`, `ko`, `nb`, `nl`, `pl`, `rm`, `ro`, `ru`, `sk`, `sl`, `sq`, `sv`, `th`, `tr`, `vi` |
 
 A language nobody has chosen a Supertext language for is translated with the **suggestion** the select shows preselected (the Supertext SDK's default), so obvious languages work without any setup:
 

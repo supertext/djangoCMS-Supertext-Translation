@@ -11,7 +11,7 @@ import random
 import re
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 from urllib.parse import quote
@@ -19,6 +19,15 @@ from urllib.parse import quote
 from ..transport import HttpRequest, HttpResponse, Transport, UrllibTransport
 from . import html_document
 from .api_key_check import KEY_CHECK_TIMEOUT, ApiKeyCheck, api_key_check_from_error, api_key_fingerprint, iso_seconds
+from .corrections import (
+    ACKNOWLEDGE_BATCH_SIZE,
+    MAX_PAGES,
+    Correction,
+    acknowledge_body,
+    acknowledged_count,
+    corrections_path,
+    parse_corrections_page,
+)
 from .errors import ErrorCode, SupertextError, error_for_response
 from .html_document import Segment
 
@@ -264,6 +273,40 @@ class SupertextClient:
         return result
 
     # -- HTTP --------------------------------------------------------------------------------
+
+    def pending_corrections(
+        self,
+        target_lang: str | None = None,
+        source_lang: str | None = None,
+        politeness: Politeness | None = None,
+    ) -> list[Correction]:
+        """Corrections reviewers made that the integration hasn't written into the CMS yet
+        (Supertext Localization Review; spec/corrections.json). Only the review service answers
+        this: against Supertext's API it raises ``not_found``. Follows all pages. ``segment_id``
+        is the ``data-st-id`` the integration sent, so this is useful when the integration builds
+        its documents with its own ids (:meth:`translate_html`)."""
+        found: list[Correction] = []
+        after: str | None = None
+        for _ in range(MAX_PAGES):
+            response = self._request("GET", corrections_path(target_lang, source_lang, politeness, after))
+            corrections, nxt = parse_corrections_page(response.text)
+            found.extend(corrections)
+            if nxt is None or nxt == after:
+                break
+            after = nxt
+        return found
+
+    def acknowledge_corrections(self, corrections: Sequence[Correction]) -> int:
+        """Tells the review service these corrections are in the CMS now; returns how many it
+        accepted. Only the fetched ``version`` counts: a newer correction stays pending."""
+        total = 0
+        for i in range(0, len(corrections), ACKNOWLEDGE_BATCH_SIZE):
+            body = acknowledge_body(corrections[i : i + ACKNOWLEDGE_BATCH_SIZE]).encode("utf-8")
+            response = self._request(
+                "POST", "review/corrections/acknowledge", body=body, content_type="application/json"
+            )
+            total += acknowledged_count(response.text)
+        return total
 
     def _request(
         self,

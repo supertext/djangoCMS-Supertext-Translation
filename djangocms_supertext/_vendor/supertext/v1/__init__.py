@@ -25,6 +25,7 @@ from .client import (
     plan_batches,
     retry_delay_ms,
 )
+from .corrections import Correction
 from .errors import API_KEY_URL, SIGNUP_URL, ErrorCode, SupertextError
 from .html_document import HtmlDocument, Segment
 from .languages import LanguageMapping, Languages, SourceLanguage, TargetLanguage
@@ -37,6 +38,7 @@ __all__ = [
     "SIGNUP_URL",
     "ApiKeyCheck",
     "ApiKeyCheckStatus",
+    "Correction",
     "ErrorCode",
     "FeatureSupport",
     "HtmlDocument",
